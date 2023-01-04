@@ -20,7 +20,7 @@ model = WearRebuild('data/FBH.pcd',           # filename
                         'crust',               # meshing algorithm ( 'delaunay', 'crust' )
                         1,                     # mesh refinement factor (int)
                         'cyl')                  # point cloud cooridante
-
+model.run()
 
 end = time.time()
 print(end-start, "seconds")

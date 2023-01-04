@@ -1,5 +1,6 @@
 # import matplotlib
 from rigid3d import RigidTransform
+from wear_ptcd import WearPointCloud
 
 '''class:`wear_rebuild` is a program for generating toolpaths for the
 repairing process of a wear using metal deposition modeling process. '''
@@ -35,10 +36,12 @@ class WearRebuild():
 
         self.MeshMethod = mesh_method 
         self.RefinementFactor = refinement_factor 
-        self.Coordinate = point_cloud_coordinate 
+        self.Coordinate = point_cloud_coordinate
 
+    # Execute repair process
+    def run(self):
         # 1- point cloud object construction
-        self.Point_Cloud = wear_ptcd(self.FILENAME, self.Coordinate, self.System) 
+        self.Point_Cloud = WearPointCloud(self.FILENAME, self.Coordinate, self.System) 
         self.System = self.Point_Cloud.System    # update model system depends on point cloud system
 
         # 2- meshes object construction
@@ -48,7 +51,6 @@ class WearRebuild():
         # 3- paths object constuction
         self.Paths = wear_path(self.Meshes, self.Clad_Params) 
         self.Clad_Params = self.Paths.Clad_Params   # update clad_params
-
 
     # export point cloud
     def pcd_export(self,to_system, to_coordinate): 

@@ -1,116 +1,91 @@
 import numpy as np
 import open3d as o3d
+from coord_systems import cart_to_cyl, convert_coords, Coords
+from rigid3d import RigidTransform
 
-class WearPointCLoud():
-    def __init__(self,filename, coordinate, system, x_conv_factor=1, y_conv_factor=1, z_conv_factor=1):
+class WearPointCloud():
+    def __init__(self,filename, coordinate, system, conv_factors=np.array([1,1,1])):
         self.Coordinate = coordinate 
         self.System = system 
 
         # loading point cloud from file in global system
         self.pcd = o3d.io.read_point_cloud(filename)
-
         # o3d.visualization.draw_geometries([pcd])
 
         # Get points
         self.points = np.asarray(self.pcd.points)
 
         # pc formating
-        self.format(self, x_conv_factor, y_conv_factor, z_conv_factor) 
+        self.format(conv_factors) 
 
         # local system transformation
-        rot = np.array((
-                    (1,	0,	0),
-                    (0,	1,	0),
-                    (0,	0,	1)
-                ))    
-        trans = self.Center     # self to switch between global and local system
-        self.Transformation = rigid3d(rot, -1 * trans) 
+        self.Transformation = RigidTransform(trans=-self.center) 
 
 
         # switch to local system if the input is in global
-        if matches(self.System, 'global')
-            self = transform(self, 'local') 
-        end
+        if self.System == 'global':
+            self.transform('local') 
 
         # calculate normals
         self.normals() 
 
 
-    def format(self, x_conv_factor, y_conv_factor, z_conv_factor):
-            # format point cloud data appropriately to match the chosen system axes
-            switch coordSystems.(self.Coordinate)
-                case coordSystems.none
-                    self.points = coordSystems.formatCart(points(:,1), points(:,2), points(:,3), x_conv_factor, y_conv_factor, z_conv_factor) 
-                case coordSystems.cart  # [ X, Y, Z ]
-                    self.points = coordSystems.formatCart(points(:,1), points(:,2), points(:,3), x_conv_factor, y_conv_factor, z_conv_factor) 
-                case coordSystems.cyl   # pc = [THETA, R, Z]  # kept as it, so that it matches user frame
-                    self.points = coordSystems.formatCylindrical(points(:,1), points(:,2), points(:,3), x_conv_factor, y_conv_factor, z_conv_factor) 
-                case coordSystems.sphere # pc = [THETA, PHI, RHO]  #  0 < PHI < 180 , with +Z axis
-                    self.points = coordSystems.formatSphere(points(:,1), points(:,3), points(:,2), x_conv_factor, y_conv_factor, z_conv_factor)
+    def format(self, conv_factors):
+        # format point cloud data appropriately to match the chosen system axes
+        if self.Coordinate == Coords.CYL:
+            self.points = cart_to_cyl(self.points)
+        
+        # Multiply by coordinate conversion factor
+        self.points *= conv_factors
 
-            # store point cloud into its object for further manipulation
-            self.Center = mean(self.points)       # point cloud center
-            self.PCD_Obj = pointCloud(self.points) 
-        end
+        self.center, _ = self.pcd.compute_mean_and_covariance()       # point cloud center
+            
 
-        function self = transform(self, to)
-            #transform Summary of self method goes here
-            #   Detailed explanation goes here
+    def transform(self, to):
+        # if ~strcmpi(self.System, to) && any(strcmpi({'global', 'local'}, to))
+        self.pcd.transform(self.Transformation.mat)
+        self.Transformation.flip()       # flipping translation
+        self.System = to 
 
-            if ~strcmpi(self.System, to) && any(strcmpi({'global', 'local'}, to))
-                self.PCD_Obj = pctransform(self.PCD_Obj,self.Transformation) 
-                self.Transformation.Translation = -1 * self.Transformation.Translation         # flipping translation
-                self.System = to 
+        # update points and center
+        self.points = self.pcd.points 
+        self.center, _ = self.pcd.compute_mean_and_covariance()   
 
-                # update points and center
-                self.points = self.PCD_Obj.Location 
-                self.Center =  mean(self.points) 
-            else
-                warning("System is already in #d", to)
-            end
+    def convert(self, to):
+        #:param to: 'none', 'cart', 'cyl', 'sphe'
+        # convert from current system to the targeted system, points, translation
+        self.points = convert_coords(self.points, self.Coordinate, to) 
+        t = convert_coords(self.Transformation.getTranslation(), self.Coordinate, to)
+        self.Transformation.setTranslation(t) 
 
-        end
+        # update point cloud object, center and coordinate 
+        self.pcd = o3d.geometry.PointCloud()
+        self.pcd.points = o3d.utility.Vector3dVector(self.points)
+        self.center, _ = self.pcd.compute_mean_and_covariance()   
+        self.Coordinate = to
 
-        function self = convert(self, to)
-            #convert Summary of self method goes here
-            #   Detailed explanation goes here
+    def normals(self):
+        self.Normals = self.pcd.normals
 
-            #:param to: 'none', 'cart', 'cyl', 'sphe'
+    # #NOTE TO COORD SHOULD BE COORD ENUM
+    # def export(self, to_system, to_coord):
+    #         # Example: ptcd.export('local', 'cart')
+    #         # check if system is different
+    #         if self.System != to_system:
+    #             temp = self.transform(to_system) 
+    #             # check if coordinate is different
+    #             if self.Coordinate != to_coord:
+    #                 temp = self.convert(temp, to_coord) 
+    #                 out = pointCloud(temp.points) 
+    #             else
+    #                 out = pointCloud(temp.points) 
+    #             end
+    #         else
+    #             if ~matches(self.Coordinate, to_coord)
+    #                 temp = convert(self, to_coord) 
+    #                 out = pointCloud(temp.points) 
+    #             else
+    #                 out = pointCloud(self.points) 
 
-            # convert from current system to the targeted system, points,
-            # and transilation values
-            self.points = coordSystems.convert(self.points, coordSystems.(self.Coordinate), coordSystems.(to)) 
-            self.Transformation.Translation = coordSystems.convert(self.Transformation.Translation, coordSystems.(self.Coordinate), coordSystems.(to)) 
-
-            # update point cloud object, center and coordinate
-            self.PCD_Obj = pointCloud(self.points) 
-            self.Center =  mean(self.points) 
-            self.Coordinate = to 
-        end
-
-        function self = normals(self)
-            #normals Summary of self method goes here
-            #   Detailed explanation goes here
-
-            init_normals = pcnormals(self.PCD_Obj) 
-
-            self.Normals = init_normals 
-
-        function out = export(self, to_system, to_coord)
-            # Example: ptcd.export('local', 'cart')
-            # check if system is different
-            if ~matches(self.System, to_system)
-                temp = transform(self, to_system) 
-                # check if coordinate is different
-                if ~matches(self.Coordinate, to_coord)
-                    temp = convert(temp, to_coord) 
-                    out = pointCloud(temp.points) 
-                else
-                    out = pointCloud(temp.points) 
-                end
-            else
-                if ~matches(self.Coordinate, to_coord)
-                    temp = convert(self, to_coord) 
-                    out = pointCloud(temp.points) 
-                else
-                    out = pointCloud(self.points) 
+if __name__ == "__main__":
+    Point_Cloud = WearPointCloud("FBH.pcd", Coords.CYL, 'global')

@@ -1,12 +1,18 @@
 # import matplotlib
 from rigid3d import RigidTransform
 from wear_ptcd import WearPointCloud
+import numpy as np
 
 '''class:`wear_rebuild` is a program for generating toolpaths for the
 repairing process of a wear using metal deposition modeling process. '''
 class WearRebuild(): 
     # parameters with default values
-    Transformation = RigidTransform()         # Model transformation matrix.
+    Transformation = np.array((
+                    (1,	0,	0,	0),
+                    (0,	1,	0,	0),
+                    (0,	0,	1,	0),
+                    (0,	0,	0,	1)
+                ))        # Model transformation matrix.
     Coordinate = 'cyl'               # Model coordinate System ('cart', 'cyl', 'sphe').
     System = 'global'           # Model working system ('global', 'local').
     MeshMethod = 'delaunay'          # Model meshing method (delauny, crust).

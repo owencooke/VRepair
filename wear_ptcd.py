@@ -1,116 +1,116 @@
+import numpy as np
+import open3d as o3d
+
 class WearPointCLoud():
-    Coordinate = 'cyl' 
-    System = 'global'            # default input system
-    
-    # constructor
-    def __init__(filename, coordinate, system, x_conv_factor=1, y_conv_factor=1, z_conv_factor=1):
-        this.Coordinate = coordinate 
-        this.System = system 
+    def __init__(self,filename, coordinate, system, x_conv_factor=1, y_conv_factor=1, z_conv_factor=1):
+        self.Coordinate = coordinate 
+        self.System = system 
 
         # loading point cloud from file in global system
-        this.Points = pcread(filename).Location
+        self.pcd = o3d.io.read_point_cloud(filename)
 
-        #FIXME: unsure of this purpose
-        # # pc formating
-        # this = format(this, x_conv_factor, y_conv_factor, z_conv_factor) 
+        # o3d.visualization.draw_geometries([pcd])
+
+        # Get points
+        self.points = np.asarray(self.pcd.points)
+
+        # pc formating
+        self.format(self, x_conv_factor, y_conv_factor, z_conv_factor) 
 
         # local system transformation
-        rot = createRotation 
-        trans = this.Center     # this to switch between global and local system
-        this.Transformation = rigid3d(rot, -1 * trans) 
+        rot = np.array((
+                    (1,	0,	0),
+                    (0,	1,	0),
+                    (0,	0,	1)
+                ))    
+        trans = self.Center     # self to switch between global and local system
+        self.Transformation = rigid3d(rot, -1 * trans) 
 
 
         # switch to local system if the input is in global
-        if matches(this.System, 'global')
-            this = transform(this, 'local') 
+        if matches(self.System, 'global')
+            self = transform(self, 'local') 
         end
 
         # calculate normals
-        this = this.normals() 
-    end
-end
+        self.normals() 
 
 
-    methods(Access = protected)
-        function this = format(this, x_conv_factor, y_conv_factor, z_conv_factor)
-            #format Summary of this method goes here
-            #   format point cloud data appropriately to match the chosen system axes
-
-            points = this.Points 
-            switch coordSystems.(this.Coordinate)
+    def format(self, x_conv_factor, y_conv_factor, z_conv_factor):
+            # format point cloud data appropriately to match the chosen system axes
+            switch coordSystems.(self.Coordinate)
                 case coordSystems.none
-                    this.Points = coordSystems.formatCart(points(:,1), points(:,2), points(:,3), x_conv_factor, y_conv_factor, z_conv_factor) 
+                    self.points = coordSystems.formatCart(points(:,1), points(:,2), points(:,3), x_conv_factor, y_conv_factor, z_conv_factor) 
                 case coordSystems.cart  # [ X, Y, Z ]
-                    this.Points = coordSystems.formatCart(points(:,1), points(:,2), points(:,3), x_conv_factor, y_conv_factor, z_conv_factor) 
+                    self.points = coordSystems.formatCart(points(:,1), points(:,2), points(:,3), x_conv_factor, y_conv_factor, z_conv_factor) 
                 case coordSystems.cyl   # pc = [THETA, R, Z]  # kept as it, so that it matches user frame
-                    this.Points = coordSystems.formatCylindrical(points(:,1), points(:,2), points(:,3), x_conv_factor, y_conv_factor, z_conv_factor) 
+                    self.points = coordSystems.formatCylindrical(points(:,1), points(:,2), points(:,3), x_conv_factor, y_conv_factor, z_conv_factor) 
                 case coordSystems.sphere # pc = [THETA, PHI, RHO]  #  0 < PHI < 180 , with +Z axis
-                    this.Points = coordSystems.formatSphere(points(:,1), points(:,3), points(:,2), x_conv_factor, y_conv_factor, z_conv_factor) 
-            end
+                    self.points = coordSystems.formatSphere(points(:,1), points(:,3), points(:,2), x_conv_factor, y_conv_factor, z_conv_factor)
 
             # store point cloud into its object for further manipulation
-            this.Center = mean(this.Points)       # point cloud center
-            this.PCD_Obj = pointCloud(this.Points) 
+            self.Center = mean(self.points)       # point cloud center
+            self.PCD_Obj = pointCloud(self.points) 
         end
 
-        function this = transform(this, to)
-            #transform Summary of this method goes here
+        function self = transform(self, to)
+            #transform Summary of self method goes here
             #   Detailed explanation goes here
 
-            if ~strcmpi(this.System, to) && any(strcmpi({'global', 'local'}, to))
-                this.PCD_Obj = pctransform(this.PCD_Obj,this.Transformation) 
-                this.Transformation.Translation = -1 * this.Transformation.Translation         # flipping translation
-                this.System = to 
+            if ~strcmpi(self.System, to) && any(strcmpi({'global', 'local'}, to))
+                self.PCD_Obj = pctransform(self.PCD_Obj,self.Transformation) 
+                self.Transformation.Translation = -1 * self.Transformation.Translation         # flipping translation
+                self.System = to 
 
                 # update points and center
-                this.Points = this.PCD_Obj.Location 
-                this.Center =  mean(this.Points) 
+                self.points = self.PCD_Obj.Location 
+                self.Center =  mean(self.points) 
             else
                 warning("System is already in #d", to)
             end
 
         end
 
-        function this = convert(this, to)
-            #convert Summary of this method goes here
+        function self = convert(self, to)
+            #convert Summary of self method goes here
             #   Detailed explanation goes here
 
             #:param to: 'none', 'cart', 'cyl', 'sphe'
 
             # convert from current system to the targeted system, points,
             # and transilation values
-            this.Points = coordSystems.convert(this.Points, coordSystems.(this.Coordinate), coordSystems.(to)) 
-            this.Transformation.Translation = coordSystems.convert(this.Transformation.Translation, coordSystems.(this.Coordinate), coordSystems.(to)) 
+            self.points = coordSystems.convert(self.points, coordSystems.(self.Coordinate), coordSystems.(to)) 
+            self.Transformation.Translation = coordSystems.convert(self.Transformation.Translation, coordSystems.(self.Coordinate), coordSystems.(to)) 
 
             # update point cloud object, center and coordinate
-            this.PCD_Obj = pointCloud(this.Points) 
-            this.Center =  mean(this.Points) 
-            this.Coordinate = to 
+            self.PCD_Obj = pointCloud(self.points) 
+            self.Center =  mean(self.points) 
+            self.Coordinate = to 
         end
 
-        function this = normals(this)
-            #normals Summary of this method goes here
+        function self = normals(self)
+            #normals Summary of self method goes here
             #   Detailed explanation goes here
 
-            init_normals = pcnormals(this.PCD_Obj) 
+            init_normals = pcnormals(self.PCD_Obj) 
 
-            this.Normals = init_normals 
+            self.Normals = init_normals 
 
-        function out = export(this, to_system, to_coord)
+        function out = export(self, to_system, to_coord)
             # Example: ptcd.export('local', 'cart')
             # check if system is different
-            if ~matches(this.System, to_system)
-                temp = transform(this, to_system) 
+            if ~matches(self.System, to_system)
+                temp = transform(self, to_system) 
                 # check if coordinate is different
-                if ~matches(this.Coordinate, to_coord)
+                if ~matches(self.Coordinate, to_coord)
                     temp = convert(temp, to_coord) 
-                    out = pointCloud(temp.Points) 
+                    out = pointCloud(temp.points) 
                 else
-                    out = pointCloud(temp.Points) 
+                    out = pointCloud(temp.points) 
                 end
             else
-                if ~matches(this.Coordinate, to_coord)
-                    temp = convert(this, to_coord) 
-                    out = pointCloud(temp.Points) 
+                if ~matches(self.Coordinate, to_coord)
+                    temp = convert(self, to_coord) 
+                    out = pointCloud(temp.points) 
                 else
-                    out = pointCloud(this.Points) 
+                    out = pointCloud(self.points) 

@@ -1,7 +1,9 @@
+from math import ceil, floor
 import sys
 from scipy.spatial import Delaunay
 import open3d as o3d
 import numpy as np
+from plane import Bounds
 
 class WearMesh():
     RefinementFactor = 1
@@ -25,10 +27,10 @@ class WearMesh():
         if method == 'delaunay':
             self.raw_faces = Delaunay(points[:,:2])   # meshing using MATLAB built-in function
             self.raw_vertices = points 
-            self.raw_BoundingBox = o3d.geometry.AxisAlignedBoundingBox.create_from_points(point_cloud_object.points)
+            self.raw_BoundingBox = Bounds(points)
             #FIXME: the bounding box values compared to MATLAB are slightly diff.
-            print(self.raw_BoundingBox)
-            print("min:", np.ndarray.min(points, 0), "max:", np.ndarray.max(points, 0)) 
+            # print(self.raw_BoundingBox)
+            # print("min:", np.ndarray.min(points, 0), "max:", np.ndarray.max(points, 0))
 
         #NOTE: add crust implementation if needed
             # case 'crust'
@@ -39,11 +41,11 @@ class WearMesh():
         else:
             sys.exit('Triangulation algorithm not implemented. Check function description.')
             
-        # # mesh refinement
+        # # mesh refinement (not implemented)
         # self.refinement(refinement_factor) 
 
         # sliced meshes ( reconstructed meshes )
-        self.sliced_meshes(points)
+        self.sliced_meshes()
 
     def calc_layer_step(self, edge, clad_height):
         #CALC_LAYER_STEP Calculate the layer step distance, and how many layer will fit in
@@ -55,48 +57,56 @@ class WearMesh():
 
         remainder = (length/clad_height) % 1
 
-        #FIXME:
-        # # if the layer thickess of the last layer is greater than 0.5 then,
-        # # cout it as a layer. If it is less then, last layer is not counted
-        # # unless it is the only layer.
-        # if remainder >= 0.5
-        #     nlayers = ceil(length/clad_height)      # Round towards plus infinity
-        # else
-        #     nlayers = floor(length/clad_height)     # Round towards minus infinity
-        #     # if length/maxPitch < 1.5 round up
-        #     if nlayers == 1
-        #         nlayers = ceil(length/clad_height) 
+        # if the layer thickess of the last layer is greater than 0.5 then,
+        # cout it as a layer. If it is less then, last layer is not counted
+        # unless it is the only layer.
+        if remainder >= 0.5:
+            nlayers = ceil(length/clad_height)      # Round towards plus infinity
+        else:
+            nlayers = floor(length/clad_height)     # Round towards minus infinity
+            # if length/maxPitch < 1.5 round up
+            if nlayers == 1:
+                nlayers = ceil(length/clad_height) 
 
-        # cal_layer_step = length/nlayers 
+        cal_layer_step = length/nlayers 
 
-        # #calculate coverage and output how to much offset to center layers if
-        # #coverage isnt 1.
-        # coverage = cal_layer_step * nlayers 
-        # if coverage/length < 1              # some uncovered
-        #     offset = (length-coverage)/2 
-        # else
-        #     offset = 0     # fully covered
+        #calculate coverage and output how to much offset to center layers if
+        #coverage isnt 1.
+        coverage = cal_layer_step * nlayers 
+        if coverage/length < 1:              # some uncovered
+            offset = (length-coverage)/2 
+        else:
+            offset = 0     # fully covered
 
-    def sliced_meshes(self, points):
-        # build-up edge
+        return cal_layer_step, nlayers, offset
+
+    def sliced_meshes(self):
         # Create a vertical 3D edge connecting top to bottom of the bounding box
-        height = max(points[:,2]) - min(points[:,2])
+        height = self.raw_BoundingBox.extent[2]
         edge = np.array((0,0,height))
-        #NOTE: height is the same as MATLAB, even tho bounds diff
-        print(edge)
 
         cal_layer_step, nlayers, offset = self.calc_layer_step(edge, self.Clad_Params.CLAD_HEIGHT) 
+        # print(cal_layer_step, nlayers, offset) # matches with matlab
+        #FIXME:
+        # mesh slicers initialization
+        # Get bottom of bounding box
+        plane1 = self.raw_BoundingBox.plane2D("bottom")
+        # Second plane is the first, but translated upwards by the layer step
+        plane2 = np.ndarray.copy(plane1)
+        for v in plane2:
+            v[2] += cal_layer_step
 
-        #     # mesh slicers initialization
-        #     # first box
-        # plane1 = raw_mesh.BoundingBox.planes('bottom') 
-        # plane2 = plane1.transform(createTranslation3d(0,0, cal_layer_step)) 
-        # box1 = Box(plane2, plane1) 
-        # Boxes(1,1) = box1 
-        #     # remaining boxes
-        # for layer = 2:nlayers
-        #     Boxes(layer,1) = box1.transform(createTranslation3d(0,0,(layer-1) * cal_layer_step)) 
-            
+        # Create initial box
+        init_box = Bounds(np.concatenate((plane2, plane1)))
+        # remaining boxes
+        boxes = [init_box]
+        for layer in range(1,nlayers+1):
+            # Apply translation
+            trans = np.array([0,0,(layer) * cal_layer_step])
+            b = init_box.translate(trans)
+            # Append new translated box
+            boxes.append(b) 
+        print('ok') 
         #     # sliced meshes generations
         # rMeshes = sliceMesh(raw_mesh, Boxes, nlayers) 
         # for layer = 1: nlayers
@@ -108,27 +118,23 @@ class WearMesh():
         # self.Clad_Params.CAL_LAYER_STEP = cal_layer_step 
         # self.Clad_Params.LAYERS = nlayers 
 
-# methods
-#     function self = refinement(self, refinement_factor)
-#             #:method `wear_mesh`
-#             #:param refinement_factor: number of mesh subdivisions
-#             #:type refinement_factor: integer
-
-#         mesh_names = {'raw_mesh','reconstructed_meshes'} 
-#         if refinement_factor > 1
-#             for n = 1:2
-#                 for m = 1:size(self.Meshes.(mesh_names{n}),1)
-#                     vertices = self.Meshes.(mesh_names{n})(m).vertices 
-#                     faces = self.Meshes.(mesh_names{n})(m).faces 
-#                     [new_vertices, new_faces] = subdivideMesh(vertices, faces, subdivisions) 
-#                     self.Meshes.(mesh_names{n})(m).vertices = new_vertices 
-#                     self.Meshes.(mesh_names{n})(m).faces = new_faces 
-                    
-                
-#             self.RefinementFactor = refinement_factor 
-#             fprintf('A refinement of  #d has been applied to the mesh', refinement_factor)
-            
-        
+    #NOTE: must implement if subdividing mesh into more triangles is needed
+    # See http://www.open3d.org/docs/release/tutorial/geometry/mesh.html#Mesh-subdivision
+    # for open3D subdivide implementations
+    #def refinement(self, refinement_factor):
+        #:param refinement_factor: number of mesh subdivisions
+        #:type refinement_factor: integer
+        # mesh_names = {'raw_mesh','reconstructed_meshes'};
+        # if refinement_factor > 1
+        #     for n = 1:2
+        #         for m = 1:size(this.Meshes.(mesh_names{n}),1)
+        #             vertices = this.Meshes.(mesh_names{n})(m).vertices;
+        #             faces = this.Meshes.(mesh_names{n})(m).faces;
+        #             [new_vertices, new_faces] = subdivideMesh(vertices, faces, subdivisions);
+        #             this.Meshes.(mesh_names{n})(m).vertices = new_vertices;
+        #             this.Meshes.(mesh_names{n})(m).faces = new_faces;
+        #     this.RefinementFactor = refinement_factor;
+        #     fprintf('A refinement of %d has been applied to the mesh', refinement_factor)
 
 #     function self = transform(self, to_system)
 #         mesh_names = {'raw_mesh','reconstructed_meshes'} 
@@ -148,9 +154,6 @@ class WearMesh():
 #         else
 #             fprintf('Meshes are already in  #d system', to_system)
             
-
-        
-
 #     function self = convert(self, to_coord)
 #             #convert Summary of self method goes here
 #             #   Detailed explanation goes here
@@ -174,9 +177,6 @@ class WearMesh():
 #         else
 #             fprintf('No convertion applied, meshes are already in  #d', to_coord) 
             
-
-        
-
 #     function out = export(self, to_system, to_coord)
 #             # Example: Mesh.export('local', 'cart')
 #             # check if system is different
@@ -194,8 +194,4 @@ class WearMesh():
 #                 temp = convert(self, to_coord) 
 #                 out = temp.Meshes 
 #             else
-#                 out = self.Meshes 
-                
-            
-        
-    
+#                 out = self.Meshes

@@ -13,11 +13,11 @@ cladding = CladParams(1,                     # clad height (mm)
                         0)                # clad cross hatching ( enable or disable )
 
 # Run wear rebuild program
-model = WearRebuild('data/FBH.pcd',           # filename
+model = WearRebuild('FBH.pcd',           # filename
                         cladding,
                         0,                     # layer offset (e.g. 0.5) (0-1)
                         3,                     # max laser defocus (mm)
-                        'crust',               # meshing algorithm ( 'delaunay', 'crust' )
+                        'delaunay',               # meshing algorithm ( 'delaunay', 'crust' )
                         1,                     # mesh refinement factor (int)
                         'cyl')                  # point cloud cooridante
 model.run()

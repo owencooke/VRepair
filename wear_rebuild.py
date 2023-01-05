@@ -1,19 +1,16 @@
 # import matplotlib
 from rigid3d import RigidTransform
 from wear_ptcd import WearPointCloud
+from wear_mesh import WearMesh
+from coord_systems import Coords
 import numpy as np
 
 '''class:`wear_rebuild` is a program for generating toolpaths for the
 repairing process of a wear using metal deposition modeling process. '''
 class WearRebuild(): 
     # parameters with default values
-    Transformation = np.array((
-                    (1,	0,	0,	0),
-                    (0,	1,	0,	0),
-                    (0,	0,	1,	0),
-                    (0,	0,	0,	1)
-                ))        # Model transformation matrix.
-    Coordinate = 'cyl'               # Model coordinate System ('cart', 'cyl', 'sphe').
+    Transformation = RigidTransform()    # Model transformation matrix.
+    Coordinate = Coords.CYL              # Model coordinate System ('cart', 'cyl', 'sphe').
     System = 'global'           # Model working system ('global', 'local').
     MeshMethod = 'delaunay'          # Model meshing method (delauny, crust).
     RefinementFactor = 1             # Mesh refinement factor
@@ -51,12 +48,12 @@ class WearRebuild():
         self.System = self.Point_Cloud.System    # update model system depends on point cloud system
 
         # 2- meshes object construction
-        self.Meshes = wear_mesh(self.Point_Cloud, self.MeshMethod, self.RefinementFactor, self.Clad_Params) 
+        self.Meshes = WearMesh(self.Point_Cloud, self.MeshMethod, self.RefinementFactor, self.Clad_Params) 
         self.Clad_Params = self.Meshes.Clad_Params   # update clad_params
 
-        # 3- paths object constuction
-        self.Paths = wear_path(self.Meshes, self.Clad_Params) 
-        self.Clad_Params = self.Paths.Clad_Params   # update clad_params
+        # # 3- paths object constuction
+        # self.Paths = wear_path(self.Meshes, self.Clad_Params) 
+        # self.Clad_Params = self.Paths.Clad_Params   # update clad_params
 
     # export point cloud
     def pcd_export(self,to_system, to_coordinate): 

@@ -131,38 +131,41 @@ class WearMesh():
         # this function followes the bottom-up rebuild approach. It uses the top
         # plane of each layer box to slice the mesh.
 
-        # slicing mesh using box "top plane"
+        slice_vertices = []
+        slice_faces = []
+
         for layer in range(nlayers):
             # slicing previous concatenated mesh using the top plane of box
             box = boxes[layer]
             top = self.raw_BoundingBox.plane2D("top")   # top plane
 
-            #FIXME: apply clip_plane for o3d tensor geom
-            # # extracturing lower mesh
-            # [Vb, Fb] = clipMesh(Vc,Fc, top, 'below')              # returns mesh below top plane of bounding box.
-            # tFb = triangulateFaces(Fb)                            # triangulation of new mesh
+            # extracting lower mesh below top plane of bounding box
+            plane_point = o3d.core.Tensor(top[0])
+            lower = self.raw_mesh.clip_plane(point=plane_point, normal=[0,0,-1])                        
 
+            # extracturing upper mesh above top plane
+            upper = self.raw_mesh.clip_plane(point=plane_point, normal=[0,0,1]) 
 
-        #     Fb = int32(tFb)                                  # updating faces indices of lower mesh
+            # FIXME: is triangulation of new mesh faces ensured by o3d?    
+            # tFb = triangulateFaces(Fb)    
+            # tFa = triangulateFaces(Fa) 
 
-        #     # extracturing upper mesh
-        #     [Va, Fa] = clipMesh(Vc,Fc, top, 'above')              # returns mesh above plane
-        #     tFa = triangulateFaces(Fa) 
-        #     Fa = int32(tFa) 
+            # layer output:
+            slice_vertices.append(np.asarray(lower.vertex.positions))
+            slice_faces.append(np.asarray(lower.triangle.indices))
 
-        #     # layer output:
-        #     slices{layer,1}.vertices = Vb 
-        #     slices{layer,1}.faces = Fb 
+            # sliced mesh projection:
+            proj_vertices = self.project_mesh(lower.vertex.positions, top)    # returns projected mesh
 
-        #     # sliced mesh projection:
-        #     [projV, projF] = projMesh(Vb,Fb, top)    # returns projected mesh
-
-        #     # merge projected mesh and remaining mesh from slicer (upper mesh):
-        #     # new mesh above the plane of first layer
-        #     [Vc, Fc] = concatenateMeshes(projV,projF,Va,Fa) 
+            # merge projected mesh and remaining mesh from slicer (upper mesh):
+            # new mesh above the plane of first layer
+            # [Vc, Fc] = concatenateMeshes(projV,projF,Va,Fa) 
 
         # slices{nlayers,1}.vertices = Vc 
         # slices{nlayers,1}.faces = int32(Fc) 
+
+    def project_mesh(self, mesh_vertices, plane):
+
 
     #NOTE: must implement if subdividing mesh into more triangles is needed
     # See http://www.open3d.org/docs/release/tutorial/geometry/mesh.html#Mesh-subdivision

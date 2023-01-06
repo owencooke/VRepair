@@ -37,7 +37,7 @@ class WearMesh():
             # )
             self.raw_mesh = o3d.t.geometry.TriangleMesh(
                 o3d.core.Tensor(points),
-                o3d.core.Tensor(np.float32(self.Delaunay.simplices)),
+                o3d.core.Tensor(np.int64(self.Delaunay.simplices)),
             )
             # o3d.visualization.draw([self.raw_mesh])
 
@@ -155,25 +155,27 @@ class WearMesh():
             # tFa = triangulateFaces(Fa) 
 
             # layer output:
-            slice_vertices.append(np.asarray(lower.vertex.positions))
-            slice_faces.append(np.asarray(lower.triangle.indices))
+            slice_vertices.append(lower.vertex.positions)
+            slice_faces.append(lower.triangle.indices)
 
             # sliced mesh projection:
             proj_vertices = self.project_mesh(lower.vertex.positions, top)    # returns projected mesh
             proj_mesh = o3d.geometry.TriangleMesh(
                 o3d.utility.Vector3dVector(proj_vertices),
-                o3d.utility.Vector3iVector(lower.triangle.indices),
+                o3d.utility.Vector3iVector(lower.triangle.indices.numpy()),
             )
 
             # merge projected mesh and remaining mesh from slicer (upper mesh):
             # new mesh above the plane of first layer
             merged = proj_mesh + upper.to_legacy() # NOTE: can only combine legacy TriMeshes
 
-        slice_vertices.append(np.asarray(merged.vertex.positions))
-        slice_faces.append(np.asarray(merged.triangle.indices))
+        slice_vertices.append(merged.vertices)
+        slice_faces.append(merged.triangles)
         return slice_vertices, slice_faces
 
     def project_mesh(self, mesh_vertices, plane):
+        # Convert to numpy
+        mesh_vertices = mesh_vertices.numpy()
         # Preallocate array for projected vertices
         proj = np.zeros((len(mesh_vertices), 3))
         for idx, v in enumerate(mesh_vertices):

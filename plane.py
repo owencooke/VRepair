@@ -57,10 +57,12 @@ class BoundingBox():
 
     def get_plane(self, face):
         if face == "bottom":
-            return Plane(point=list(self.min), normal=CartNorms.BOTTOM)
+            # return Plane(point=list(self.min), normal=CartNorms.BOTTOM)
+            return Plane(point=list(self.min), normal=[0,0,-1])
 
         elif face == "top":
-            return Plane(point=list(self.max), normal=CartNorms.TOP)
+            # return Plane(point=list(self.max), normal=CartNorms.TOP)
+            return Plane(point=list(self.max), normal=[0,0,1])
 
 
     def translate(self, t):

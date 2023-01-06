@@ -3,7 +3,7 @@ import sys
 from scipy.spatial import Delaunay
 import open3d as o3d
 import numpy as np
-from plane import Bounds
+from plane import BoundingBox, Plane
 
 class WearMesh():
     RefinementFactor = 1
@@ -28,7 +28,7 @@ class WearMesh():
             self.Delaunay = Delaunay(points[:,:2])   # meshing using MATLAB built-in function
             self.raw_vertices = points 
             #FIXME: the bounding box values compared to MATLAB are slightly diff.
-            self.raw_BoundingBox = Bounds(points)
+            self.raw_BoundingBox = BoundingBox(points)
 
             # Create mesh
             # self.raw_mesh = o3d.geometry.TriangleMesh(
@@ -96,17 +96,17 @@ class WearMesh():
 
         cal_layer_step, nlayers, offset = self.calc_layer_step(edge, self.Clad_Params.CLAD_HEIGHT) 
         # print(cal_layer_step, nlayers, offset) # matches with matlab
-        #FIXME:
+    
         # mesh slicers initialization
         # Get bottom of bounding box
-        plane1 = self.raw_BoundingBox.plane2D("bottom")
+        bottom = self.raw_BoundingBox.get_face_coords("bottom")
         # Second plane is the first, but translated upwards by the layer step
-        plane2 = np.ndarray.copy(plane1)
+        plane2 = np.ndarray.copy(bottom)
         for v in plane2:
             v[2] += cal_layer_step
 
         # Create initial box
-        init_box = Bounds(np.concatenate((plane2, plane1)))
+        init_box = BoundingBox(np.concatenate((plane2, bottom)))
         # remaining boxes
         boxes = [init_box]
         for layer in range(1,nlayers+1):
@@ -117,12 +117,17 @@ class WearMesh():
             boxes.append(b) 
         
         # sliced meshes generations
-        rMeshes = self.slice_mesh(boxes, nlayers) 
-        # for layer = 1: nlayers
-        #     self.Meshes.reconstructed_meshes(layer,1).vertices = rMeshes{layer,1}.vertices 
-        #     self.Meshes.reconstructed_meshes(layer,1).faces = rMeshes{layer,1}.faces 
-        #     self.Meshes.reconstructed_meshes(layer,1).BoundingBox = Boxes(layer,1) 
+        vertices, faces = self.slice_mesh(boxes, nlayers)
 
+        self.reconstructed_vertices = []
+        self.reconstructed_faces = []
+
+        # Store sliced mesh info for each layer
+        for layer in range(nlayers+1):
+            self.reconstructed_vertices.append(vertices[layer])
+            self.reconstructed_faces.append(faces[layer])
+
+        self.reconstructed_BoundingBoxes = boxes
         self.Clad_Params.CAL_LAYER_STEP = cal_layer_step 
         self.Clad_Params.LAYERS = nlayers 
 
@@ -137,14 +142,13 @@ class WearMesh():
         for layer in range(nlayers):
             # slicing previous concatenated mesh using the top plane of box
             box = boxes[layer]
-            top = self.raw_BoundingBox.plane2D("top")   # top plane
+            top = box.get_plane("top")
 
             # extracting lower mesh below top plane of bounding box
-            plane_point = o3d.core.Tensor(top[0])
-            lower = self.raw_mesh.clip_plane(point=plane_point, normal=[0,0,-1])                        
+            lower = self.raw_mesh.clip_plane(point=list(top.point), normal=[0,0,-1])                        
 
             # extracturing upper mesh above top plane
-            upper = self.raw_mesh.clip_plane(point=plane_point, normal=[0,0,1]) 
+            upper = self.raw_mesh.clip_plane(point=list(top.point), normal=[0,0,1]) 
 
             # FIXME: is triangulation of new mesh faces ensured by o3d?    
             # tFb = triangulateFaces(Fb)    
@@ -156,16 +160,26 @@ class WearMesh():
 
             # sliced mesh projection:
             proj_vertices = self.project_mesh(lower.vertex.positions, top)    # returns projected mesh
+            proj_mesh = o3d.geometry.TriangleMesh(
+                o3d.utility.Vector3dVector(proj_vertices),
+                o3d.utility.Vector3iVector(lower.triangle.indices),
+            )
 
             # merge projected mesh and remaining mesh from slicer (upper mesh):
             # new mesh above the plane of first layer
-            # [Vc, Fc] = concatenateMeshes(projV,projF,Va,Fa) 
+            merged = proj_mesh + upper.to_legacy() # NOTE: can only combine legacy TriMeshes
 
-        # slices{nlayers,1}.vertices = Vc 
-        # slices{nlayers,1}.faces = int32(Fc) 
+        slice_vertices.append(np.asarray(merged.vertex.positions))
+        slice_faces.append(np.asarray(merged.triangle.indices))
+        return slice_vertices, slice_faces
 
     def project_mesh(self, mesh_vertices, plane):
-
+        # Preallocate array for projected vertices
+        proj = np.zeros((len(mesh_vertices), 3))
+        for idx, v in enumerate(mesh_vertices):
+            # Project each vertex onto plane using scikit-spatial
+            proj[idx] = plane.project_point(v)
+        return proj
 
     #NOTE: must implement if subdividing mesh into more triangles is needed
     # See http://www.open3d.org/docs/release/tutorial/geometry/mesh.html#Mesh-subdivision
@@ -184,6 +198,7 @@ class WearMesh():
         #             this.Meshes.(mesh_names{n})(m).faces = new_faces 
         #     this.RefinementFactor = refinement_factor 
         #     fprintf('A refinement of #d has been applied to the mesh', refinement_factor)
+
 
 #     function self = transform(self, to_system)
 #         mesh_names = {'raw_mesh','reconstructed_meshes'} 

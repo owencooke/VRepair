@@ -6,6 +6,8 @@ class CladParams():
         self.CLAD_HEIGHT = clad_height 
         self.CLAD_WIDTH = clad_width 
         self.MAX_CLAD_STEP = max_clad_step 
+        self.CAL_LAYER_STEP = None
+        self.LAYERS = 0
 
         #  check if vars are as expected
         if clad_orientation>= 0 and clad_orientation <= 180 and ( clad_cross_hatching == 0 or clad_cross_hatching ==1 ):

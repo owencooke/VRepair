@@ -18,26 +18,35 @@ class Bounds():
         self.center = self.min + self.extent / 2
 
         # Box vertices
-        vertices = [self.min, self.max]
+        vertices = [np.ndarray.copy(self.min), np.ndarray.copy(self.max)]
         for i in range(3):
             # Add each extent to each min for a vertex
-            min = self.min
+            min = np.ndarray.copy(self.min)
             min[i] += self.extent[i]
             vertices.append(min)
 
             # Subtract each extent from each max for a vertex
-            max = self.max
+            max = np.ndarray.copy(self.max)
             max[i] -= self.extent[i]
             vertices.append(max)
         self.vertices = np.array(vertices)
 
-    def plane2D(self, identifier):
-        if identifier == "bottom":
+    def plane2D(self, face):
+        if face == "bottom":
             # 4 coords at lowest z value
             min_z = self.min[2]
             plane = []
             for v in self.vertices:
                 if v[2] == min_z:
+                    plane.append(v)
+            return np.array(plane)
+
+        elif face == "top":
+            # 4 coords at highest z value
+            max_z = self.max[2]
+            plane = []
+            for v in self.vertices:
+                if v[2] == max_z:
                     plane.append(v)
             return np.array(plane)
 

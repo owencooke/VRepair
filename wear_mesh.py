@@ -25,12 +25,21 @@ class WearMesh():
         # wear point cloud to mesh ( raw mesh )
         points = np.asarray(point_cloud_object.points)
         if method == 'delaunay':
-            self.raw_faces = Delaunay(points[:,:2])   # meshing using MATLAB built-in function
+            self.Delaunay = Delaunay(points[:,:2])   # meshing using MATLAB built-in function
             self.raw_vertices = points 
-            self.raw_BoundingBox = Bounds(points)
             #FIXME: the bounding box values compared to MATLAB are slightly diff.
-            # print(self.raw_BoundingBox)
-            # print("min:", np.ndarray.min(points, 0), "max:", np.ndarray.max(points, 0))
+            self.raw_BoundingBox = Bounds(points)
+
+            # Create mesh
+            # self.raw_mesh = o3d.geometry.TriangleMesh(
+            #     o3d.utility.Vector3dVector(points),
+            #     o3d.utility.Vector3iVector(self.Delaunay.simplices),
+            # )
+            self.raw_mesh = o3d.t.geometry.TriangleMesh(
+                o3d.core.Tensor(points),
+                o3d.core.Tensor(np.float32(self.Delaunay.simplices)),
+            )
+            # o3d.visualization.draw([self.raw_mesh])
 
         #NOTE: add crust implementation if needed
             # case 'crust'
@@ -40,7 +49,7 @@ class WearMesh():
             #     self.Meshes.raw_mesh.BoundingBox = Box(boundingBox3d(points)) 
         else:
             sys.exit('Triangulation algorithm not implemented. Check function description.')
-            
+
         # # mesh refinement (not implemented)
         # self.refinement(refinement_factor) 
 
@@ -55,7 +64,7 @@ class WearMesh():
 
         length = edge[2]
 
-        remainder = (length/clad_height) % 1
+        remainder = (length/clad_height) # 1
 
         # if the layer thickess of the last layer is greater than 0.5 then,
         # cout it as a layer. If it is less then, last layer is not counted
@@ -106,17 +115,54 @@ class WearMesh():
             b = init_box.translate(trans)
             # Append new translated box
             boxes.append(b) 
-        print('ok') 
-        #     # sliced meshes generations
-        # rMeshes = sliceMesh(raw_mesh, Boxes, nlayers) 
+        
+        # sliced meshes generations
+        rMeshes = self.slice_mesh(boxes, nlayers) 
         # for layer = 1: nlayers
         #     self.Meshes.reconstructed_meshes(layer,1).vertices = rMeshes{layer,1}.vertices 
         #     self.Meshes.reconstructed_meshes(layer,1).faces = rMeshes{layer,1}.faces 
         #     self.Meshes.reconstructed_meshes(layer,1).BoundingBox = Boxes(layer,1) 
-            
 
-        # self.Clad_Params.CAL_LAYER_STEP = cal_layer_step 
-        # self.Clad_Params.LAYERS = nlayers 
+        self.Clad_Params.CAL_LAYER_STEP = cal_layer_step 
+        self.Clad_Params.LAYERS = nlayers 
+
+    def slice_mesh(self, boxes, nlayers):
+        #SLICEMESH returns the slices of a mesh, sliced using plane of a box.
+        # this function followes the bottom-up rebuild approach. It uses the top
+        # plane of each layer box to slice the mesh.
+
+        # slicing mesh using box "top plane"
+        for layer in range(nlayers):
+            # slicing previous concatenated mesh using the top plane of box
+            box = boxes[layer]
+            top = self.raw_BoundingBox.plane2D("top")   # top plane
+
+            #FIXME: apply clip_plane for o3d tensor geom
+            # # extracturing lower mesh
+            # [Vb, Fb] = clipMesh(Vc,Fc, top, 'below')              # returns mesh below top plane of bounding box.
+            # tFb = triangulateFaces(Fb)                            # triangulation of new mesh
+
+
+        #     Fb = int32(tFb)                                  # updating faces indices of lower mesh
+
+        #     # extracturing upper mesh
+        #     [Va, Fa] = clipMesh(Vc,Fc, top, 'above')              # returns mesh above plane
+        #     tFa = triangulateFaces(Fa) 
+        #     Fa = int32(tFa) 
+
+        #     # layer output:
+        #     slices{layer,1}.vertices = Vb 
+        #     slices{layer,1}.faces = Fb 
+
+        #     # sliced mesh projection:
+        #     [projV, projF] = projMesh(Vb,Fb, top)    # returns projected mesh
+
+        #     # merge projected mesh and remaining mesh from slicer (upper mesh):
+        #     # new mesh above the plane of first layer
+        #     [Vc, Fc] = concatenateMeshes(projV,projF,Va,Fa) 
+
+        # slices{nlayers,1}.vertices = Vc 
+        # slices{nlayers,1}.faces = int32(Fc) 
 
     #NOTE: must implement if subdividing mesh into more triangles is needed
     # See http://www.open3d.org/docs/release/tutorial/geometry/mesh.html#Mesh-subdivision
@@ -124,17 +170,17 @@ class WearMesh():
     #def refinement(self, refinement_factor):
         #:param refinement_factor: number of mesh subdivisions
         #:type refinement_factor: integer
-        # mesh_names = {'raw_mesh','reconstructed_meshes'};
+        # mesh_names = {'raw_mesh','reconstructed_meshes'} 
         # if refinement_factor > 1
         #     for n = 1:2
         #         for m = 1:size(this.Meshes.(mesh_names{n}),1)
-        #             vertices = this.Meshes.(mesh_names{n})(m).vertices;
-        #             faces = this.Meshes.(mesh_names{n})(m).faces;
-        #             [new_vertices, new_faces] = subdivideMesh(vertices, faces, subdivisions);
-        #             this.Meshes.(mesh_names{n})(m).vertices = new_vertices;
-        #             this.Meshes.(mesh_names{n})(m).faces = new_faces;
-        #     this.RefinementFactor = refinement_factor;
-        #     fprintf('A refinement of %d has been applied to the mesh', refinement_factor)
+        #             vertices = this.Meshes.(mesh_names{n})(m).vertices 
+        #             faces = this.Meshes.(mesh_names{n})(m).faces 
+        #             [new_vertices, new_faces] = subdivideMesh(vertices, faces, subdivisions) 
+        #             this.Meshes.(mesh_names{n})(m).vertices = new_vertices 
+        #             this.Meshes.(mesh_names{n})(m).faces = new_faces 
+        #     this.RefinementFactor = refinement_factor 
+        #     fprintf('A refinement of #d has been applied to the mesh', refinement_factor)
 
 #     function self = transform(self, to_system)
 #         mesh_names = {'raw_mesh','reconstructed_meshes'} 

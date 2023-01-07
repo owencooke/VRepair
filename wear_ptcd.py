@@ -27,19 +27,21 @@ class WearPointCloud():
             self.transform('local') 
 
         # calculate normals
-        self.normals() 
+        # self.normals() 
 
 
     def format(self, conv_factors):
         # format point cloud data appropriately to match the chosen system axes
-        if self.Coordinate == Coords.CYL:
-            self.points = cart_to_cyl(self.points)
+        # NOTE: Hamdan's cylindrical conversion code does not actually convert coordinate values
+        # if self.Coordinate == Coords.CYL:
+        #     self.points = cart_to_cyl(self.points)
         
         # Multiply by coordinate conversion factor
         self.points *= conv_factors
 
         self.center, _ = self.pcd.compute_mean_and_covariance()       # point cloud center
-            
+        self.pcd.points = o3d.utility.Vector3dVector(self.points)
+        # o3d.visualization.draw_geometries([self.pcd])
 
     def transform(self, to):
         # if ~strcmpi(self.System, to) && any(strcmpi({'global', 'local'}, to))
@@ -48,7 +50,7 @@ class WearPointCloud():
         self.System = to 
 
         # update points and center
-        self.points = self.pcd.points 
+        # self.points = np.asarray(self.pcd.points) # shallow copy
         self.center, _ = self.pcd.compute_mean_and_covariance()   
 
     def convert(self, to):
@@ -65,6 +67,8 @@ class WearPointCloud():
         self.Coordinate = to
 
     def normals(self):
+        #NOTE: normals must be computed if needed
+        # http://www.open3d.org/docs/release/python_api/open3d.geometry.PointCloud.html#open3d.geometry.PointCloud.estimate_normals
         self.Normals = self.pcd.normals
 
     # #NOTE TO COORD SHOULD BE COORD ENUM

@@ -26,8 +26,7 @@ class WearMesh():
         points = np.asarray(point_cloud_object.points)
         if method == 'delaunay':
             self.Delaunay = Delaunay(points[:,:2])   # meshing using MATLAB built-in function
-            self.raw_vertices = points 
-            #FIXME: the bounding box values compared to MATLAB are slightly diff.
+            self.raw_vertices = points
             self.raw_BoundingBox = BoundingBox(points)
 
             # Create mesh
@@ -64,7 +63,7 @@ class WearMesh():
 
         length = edge[2]
 
-        remainder = (length/clad_height) # 1
+        remainder = (length/clad_height) % 1
 
         # if the layer thickess of the last layer is greater than 0.5 then,
         # cout it as a layer. If it is less then, last layer is not counted
@@ -94,8 +93,8 @@ class WearMesh():
         height = self.raw_BoundingBox.extent[2]
         edge = np.array((0,0,height))
 
-        cal_layer_step, nlayers, offset = self.calc_layer_step(edge, self.Clad_Params.CLAD_HEIGHT) 
-        # print(cal_layer_step, nlayers, offset) # matches with matlab
+        # Determine layer step value and # of layers
+        cal_layer_step, nlayers, offset = self.calc_layer_step(edge, self.Clad_Params.CLAD_HEIGHT)
     
         # mesh slicers initialization
         # Get bottom of bounding box
@@ -109,7 +108,7 @@ class WearMesh():
         init_box = BoundingBox(np.concatenate((plane2, bottom)))
         # remaining boxes
         boxes = [init_box]
-        for layer in range(1,nlayers+1):
+        for layer in range(1,nlayers):
             # Apply translation
             trans = np.array([0,0,(layer) * cal_layer_step])
             b = init_box.translate(trans)
@@ -139,7 +138,7 @@ class WearMesh():
         slice_vertices = []
         slice_faces = []
 
-        for layer in range(nlayers):
+        for layer in range(nlayers-1):
             # slicing previous concatenated mesh using the top plane of box
             box = boxes[layer]
             top = box.get_plane("top")
@@ -154,28 +153,30 @@ class WearMesh():
             # tFb = triangulateFaces(Fb)    
             # tFa = triangulateFaces(Fa) 
 
+            # Convert lower mesh's vertices and triangles to numpy
+            lower_verts = lower.vertex.positions.numpy()
+            lower_tri = lower.triangle.indices.numpy()
+
             # layer output:
-            slice_vertices.append(lower.vertex.positions)
-            slice_faces.append(lower.triangle.indices)
+            slice_vertices.append(lower_verts)
+            slice_faces.append(lower_tri)
 
             # sliced mesh projection:
-            proj_vertices = self.project_mesh(lower.vertex.positions, top)    # returns projected mesh
+            proj_vertices = self.project_mesh(lower_verts, top)    # returns projected mesh
             proj_mesh = o3d.geometry.TriangleMesh(
                 o3d.utility.Vector3dVector(proj_vertices),
-                o3d.utility.Vector3iVector(lower.triangle.indices.numpy()),
+                o3d.utility.Vector3iVector(lower_tri),
             )
 
             # merge projected mesh and remaining mesh from slicer (upper mesh):
             # new mesh above the plane of first layer
-            merged = proj_mesh + upper.to_legacy() # NOTE: can only combine legacy TriMeshes
+            merged = proj_mesh + upper.to_legacy() # NOTE: can only combine legacy o3d Triangle meshes
 
-        slice_vertices.append(merged.vertices)
-        slice_faces.append(merged.triangles)
+        slice_vertices.append(np.asarray(merged.vertices))
+        slice_faces.append(np.asarray(merged.triangles))
         return slice_vertices, slice_faces
 
     def project_mesh(self, mesh_vertices, plane):
-        # Convert to numpy
-        mesh_vertices = mesh_vertices.numpy()
         # Preallocate array for projected vertices
         proj = np.zeros((len(mesh_vertices), 3))
         for idx, v in enumerate(mesh_vertices):

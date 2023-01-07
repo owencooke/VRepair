@@ -1,6 +1,7 @@
 import time
 from wear_rebuild import WearRebuild
 from clad_params import CladParams
+from coord_systems import Coords
 
 print("Processing ")
 start = time.time()
@@ -19,7 +20,7 @@ model = WearRebuild('FBH.pcd',           # filename
                         3,                     # max laser defocus (mm)
                         'delaunay',               # meshing algorithm ( 'delaunay', 'crust' )
                         1,                     # mesh refinement factor (int)
-                        'cyl')                  # point cloud cooridante
+                        Coords.CYL)                  # point cloud cooridante
 model.run()
 
 end = time.time()

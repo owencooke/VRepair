@@ -7,7 +7,7 @@ class RigidTransform():
                     (0,	1,	0,	0),
                     (0,	0,	1,	0),
                     (0,	0,	0,	1)
-                ))
+                ), dtype=np.float64)
 
         # Initial rotation
         if type(rot) is np.ndarray:

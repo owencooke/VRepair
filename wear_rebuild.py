@@ -2,6 +2,7 @@
 from rigid3d import RigidTransform
 from wear_ptcd import WearPointCloud
 from wear_mesh import WearMesh
+from wear_path import WearPath
 import numpy as np
 
 '''class:`wear_rebuild` is a program for generating toolpaths for the
@@ -25,16 +26,13 @@ class WearRebuild():
     PLOTS_STYLE = 'normal'       # 'normal', 'equal'
 
      # CONSTRUCTOR 
-    def __init__(self, filename, clad_params, layer_offset, max_laser_defocus, mesh_method,
+    def __init__(self, filename, clad_params, mesh_method,
                 refinement_factor, point_cloud_coordinate):
             
         self.FILENAME = filename 
 
         # store cladding parameters
         self.Clad_Params = clad_params
-
-        self.LAYER_OFFSET = layer_offset 
-        self.MAX_LASER_DEFOCUS = max_laser_defocus 
 
         self.MeshMethod = mesh_method 
         self.RefinementFactor = refinement_factor 
@@ -50,9 +48,9 @@ class WearRebuild():
         self.Meshes = WearMesh(self.Point_Cloud, self.MeshMethod, self.RefinementFactor, self.Clad_Params) 
         self.Clad_Params = self.Meshes.Clad_Params   # update clad_params
 
-        # # 3- paths object constuction
-        # self.Paths = wear_path(self.Meshes, self.Clad_Params) 
-        # self.Clad_Params = self.Paths.Clad_Params   # update clad_params
+        # 3- paths object constuction
+        self.Paths = WearPath(self.Meshes, self.Clad_Params) 
+        self.Clad_Params = self.Paths.Clad_Params   # update clad_params
 
     # export point cloud
     def pcd_export(self,to_system, to_coordinate): 

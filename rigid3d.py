@@ -1,5 +1,17 @@
 import numpy as np
 
+# Returns 4x4 matrix representing rotation about z-axis
+def rotation_around_z(angle):
+    cos = np.cos(angle)
+    sin = np.sin(angle)
+    # Apply rotation
+    rot = np.array((
+                (cos,	-sin,	0),
+                (sin,	cos,	0),
+                (0,	    0,  	1)
+            ), dtype=np.float64)
+    return RigidTransform(rot)
+
 class RigidTransform():
     def __init__(self, rot=None, trans=None):
         self.mat = np.array((
@@ -33,6 +45,10 @@ class RigidTransform():
 
     def flip(self):
         self.mat[:3,3] *= -1
+    
+    def inverse(self):
+        self.mat = np.linalg.inv(self.mat)
+        return self.mat
 
 if __name__ == "__main__":
     x = RigidTransform()

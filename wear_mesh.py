@@ -122,7 +122,7 @@ class WearMesh():
         self.reconstructed_faces = []
 
         # Store sliced mesh info for each layer
-        for layer in range(nlayers+1):
+        for layer in range(nlayers):
             self.reconstructed_vertices.append(vertices[layer])
             self.reconstructed_faces.append(faces[layer])
 

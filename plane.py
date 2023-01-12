@@ -10,6 +10,8 @@ class BoundingBox():
     def __init__(self, points):
         if type(points) is np.ndarray:
             self.update_points(points)
+        else:
+            print("Error: BoundingBox init failed, points not ndarray")
     
     def update_points(self, points):
         # Compute the min/max for each axis (x,y,z)
@@ -36,22 +38,41 @@ class BoundingBox():
             vertices.append(max)
         self.vertices = np.array(vertices)
 
+    #FIXME: refactor
     def get_face_coords(self, face):
         if face == "bottom":
             # 4 coords at lowest z value
-            min_z = self.min[2]
+            min = self.min[2]
             plane = []
             for v in self.vertices:
-                if v[2] == min_z:
+                if v[2] == min:
                     plane.append(v)
             return np.array(plane)
 
         elif face == "top":
             # 4 coords at highest z value
-            max_z = self.max[2]
+            max = self.max[2]
             plane = []
             for v in self.vertices:
-                if v[2] == max_z:
+                if v[2] == max:
+                    plane.append(v)
+            return np.array(plane)
+        
+        elif face == "front":
+            # 4 coords at highest z value
+            max = self.min[1]
+            plane = []
+            for v in self.vertices:
+                if v[1] == max:
+                    plane.append(v)
+            return np.array(plane)
+        
+        elif face == "back":
+            # 4 coords at lowest z value
+            min = self.max[1]
+            plane = []
+            for v in self.vertices:
+                if v[1] == min:
                     plane.append(v)
             return np.array(plane)
 
@@ -64,6 +85,9 @@ class BoundingBox():
             # return Plane(point=list(self.max), normal=CartNorms.TOP)
             return Plane(point=list(self.max), normal=[0,0,1])
 
+    def plane_center(self, face):
+        face_coords = self.get_face_coords(face)
+        return np.mean(face_coords, axis=0)
 
     def translate(self, t):
         # Apply translation and update points

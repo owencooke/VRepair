@@ -1,7 +1,7 @@
 '''Essentially a struct for the cladding parameters'''
 class CladParams():
-    def __init__(self, clad_height, clad_width, max_clad_step, 
-                clad_orientation, clad_cross_hatching):
+    def __init__(self, clad_height, clad_width, max_clad_step, clad_orientation,
+                    clad_cross_hatching, layer_offset, max_laser_defocus):
 
         self.CLAD_HEIGHT = clad_height 
         self.CLAD_WIDTH = clad_width 
@@ -16,3 +16,6 @@ class CladParams():
         else:
             print(['WARNING: Clads orientation should be between 0 - 180 degrees, '
                 'and 0 or 1 to activate cross paths functionality'])
+
+        self.LAYER_OFFSET = layer_offset
+        self.MAX_LASER_DEFOCUS = max_laser_defocus

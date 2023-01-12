@@ -3,6 +3,7 @@ from math import radians, ceil, floor
 from rigid3d import rotation_around_z
 from plane import BoundingBox
 from skspatial.objects import Plane
+import multiprocessing
 
 class WearPath():
     def __init__(self, meshes_obj, clad_params):
@@ -91,12 +92,13 @@ class WearPath():
                 nClads -= 1    # removing one clad on self layer
             
             # preallocating
-            layer_planes = np.zeros((nClads,9))
+            # layer_planes = np.zeros((nClads,9))
+            layer_planes = []
 
             # generating planes, transform to orginal position
             for i in range(nClads):
                 point = start_point1 + vector * cal_clad_step * (i-1)
-                # plane = Plane(point=point, normal=vector)
+    
                 # apply inverse transform to point and normal
                 transform = layer_rot_matrix.inverse()
 
@@ -106,15 +108,16 @@ class WearPath():
                 vector = np.append(vector, 0)
                 vector = transform.dot(vector)[:3]
 
-                # layer_planes(i,:) = transformPlane3d(plane, layer_rot_matrix.inverse())
+                # Store transformed plane
+                layer_planes.append(Plane(point=point, normal=vector))
 
-        #     clippers{layer,1} = layer_planes
+            clippers.append(layer_planes)
 
-        #     layers_clad_dirs(layer,1) = clad_ori   # in radain
+            layers_clad_dirs.append(clad_ori)   # in radian
 
-        # self.Clad_Params.CAL_CLAD_STEP = cal_clad_step
-        # self.Clad_Params.CAL_CALDS_OVERLAP = cal_clads_overlap
-        # self.Clippers = clippers
+        self.Clad_Params.CAL_CLAD_STEP = cal_clad_step
+        self.Clad_Params.CAL_CALDS_OVERLAP = cal_clads_overlap
+        self.Clippers = clippers
 
 
     def calc_clad_step(self, edge, max_clad_step, clad_width):
@@ -154,25 +157,33 @@ class WearPath():
 
         return cal_clad_step, nClads, offset, clads_overlap
 
-#         # tool paths generation
-#         function self = generate_paths_and_normal(self)
-#             # tolerance used to identifying identical vertices
-#             tol = eps(1e8)
-#             threshold = 3     # minimum clad path length (3 mm)
+    # tool paths generation
+    def generate_paths_and_normal(self):
+        # tolerance used to identifying identical vertices
+        tol = 1.49011611938477e-08 #eps(1e8)
+        threshold = 3     # minimum clad path length (3 mm)
 
-#             # vars
-#             mesh = self.Meshes.reconstructed_meshes
-#             clippers = self.Clippers
-#             max_laser_defocus = self.Clad_Params.MAX_LASER_DEFOCUS
-#             nlayers = self.Clad_Params.LAYERS
+        # vars
+        # mesh = self.Meshes.reconstructed_meshes
+        clippers = self.Clippers
+        max_laser_defocus = self.Clad_Params.MAX_LASER_DEFOCUS
+        nlayers = self.Clad_Params.LAYERS
 
-#             # preallocating
-#             paths = cell(nlayers,1)
-#             #layer_paths = {}
+        # preallocating
+        paths = []
+        #layer_paths = {}
 
-#             # loop over layers
-#             parfor layer = 1:nlayers
-#                 layer_paths = {}
+        # loop over layers using multi-threaded process
+        # parfor layer = 1:nlayers
+        pool = multiprocessing.Pool()
+        pool.map(self.path_loop, range(nlayers))
+        pool.close()
+        pool.join()   
+        print('done')
+
+    def path_loop(self):
+        print("threading should go here")
+        # layer_paths = {}
 
 #                 verts = mesh(layer).vertices
 #                 faces = mesh(layer).faces
@@ -492,9 +503,3 @@ class WearPath():
 
 #             out2 = self.Depths
 #             out3 = self.Normals
-        
-
-
-
-    
-

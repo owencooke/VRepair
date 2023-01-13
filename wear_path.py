@@ -2,7 +2,7 @@ import numpy as np
 from math import radians, ceil, floor
 from rigid3d import rotation_around_z
 from plane import BoundingBox
-from skspatial.objects import Plane
+from skspatial.objects import Plane, Line
 import multiprocessing
 
 class WearPath():
@@ -166,7 +166,6 @@ class WearPath():
 
     def slice_face(self, face, vof, plane):
         # returns the edge of sliced face by plane.
-        print('ok')
         # Input:
         # face: face vertices in X-Y-Z position
         # vof: vertices location (above, below, on plane)
@@ -178,21 +177,28 @@ class WearPath():
 
         # ensure last point is the same as the first one for polygon purpose
         if not np.array_equal(face[0], face[-1]):
-            face = np.append(face, face[0], axis=0)
+            face = np.append(face, [face[0]], axis=0)
 
         # FIXME: not sure what this does, why any would ever equal 2
         # checking if the vertices are on the plane:
         # vof(vof == 2) = ~vof(any(vof ~= 2))
-
-        # # initialize empty polygon
+        
+        # initialize empty polygon
         # poly2 = zeros(0, 2);
 
-        # # indices of edges intersecting the plane
+        # indices of edges intersecting the plane
         # ind = find(vof ~= vof([2:end 1]));
+        ind = np.where( (vof != np.roll(vof, -1)) == 1)[0]
 
-        # # compute intersection points: they are 2 for a convex polygon
-        # lines = createLine3d(face(ind, :), face(ind+1, :));
-        # pInt = intersectLinePlane(lines, plane);  # edge of intersection 
+        # compute intersection points: they are 2 for a convex polygon
+        intersections = np.zeros((len(ind),3))
+        for count, i in enumerate(ind):
+            # Create line of face edge
+            line = Line.from_points(face[i], face[i+1])
+            # Compute intersection point of line/plane using skspatial
+            intersections[count] = plane.intersect_line(line)
+
+        return intersections
 
     # tool paths generation
     def generate_paths_and_normal(self):
@@ -242,7 +248,7 @@ class WearPath():
                     continue
 
                 # otherwise handle intersection
-                path = []
+                path = np.empty((0,3))
                 grouped_path = {}
 
                 # iterating over faces
@@ -254,22 +260,19 @@ class WearPath():
                     if sum(vof) == 0:
                         continue        # no intersection with self face
 
-                    path.append(self.slice_face(verts[fac], vof, clipper))     # adding clipped edge to paths
+                    path = np.append(path, self.slice_face(verts[fac], vof, clipper), axis=0)     # adding clipped edge to paths
 
-            
+                # checking if no intersection happens, in case of two valleys
+                if not path.size:
+                    continue
+        
+                # arrange clipped points
+                path.sort(axis=0)
 
-#                     # checking if no intersection happens, in case of two valleys
-#                     if isempty(path)
-#                         continue
-            
-
-#                     # arrange clipped points
-#                     path = sortrows(path)
-
-#                     # clean up paths in case of defected mesh
-#                     path(isnan(path(:,1)),:) = []      # removing any NAN rows
-#                     uniq_inds = true(size(path,1),1)
-#                     iter = false(size(path,1),1)         # keep track of rows
+                # clean up paths in case of defected mesh
+                # path(isnan(path(:,1)),:) = []      # removing any NAN rows
+                # uniq_inds = true(size(path,1),1)
+                # iter = false(size(path,1),1)         # keep track of rows
 #                     for row = 1:size(path,1)
 #                         # skip if points already checked before
 #                         if ~iter(row)

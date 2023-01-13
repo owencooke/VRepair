@@ -157,6 +157,43 @@ class WearPath():
 
         return cal_clad_step, nClads, offset, clads_overlap
 
+    def below_plane(self, points, plane):
+        # Preallocate
+        results = np.zeros(len(points))
+        for i in range(len(points)):
+            results[i] = plane.side_point(points[i])
+        return results
+
+    def slice_face(self, face, vof, plane):
+        # returns the edge of sliced face by plane.
+        print('ok')
+        # Input:
+        # face: face vertices in X-Y-Z position
+        # vof: vertices location (above, below, on plane)
+        # plane: slicing plane
+
+        # Output:
+        # pInt: points of intersection (point, edges, nan).
+        # Processing
+
+        # ensure last point is the same as the first one for polygon purpose
+        if not np.array_equal(face[0], face[-1]):
+            face = np.append(face, face[0], axis=0)
+
+        # FIXME: not sure what this does, why any would ever equal 2
+        # checking if the vertices are on the plane:
+        # vof(vof == 2) = ~vof(any(vof ~= 2))
+
+        # # initialize empty polygon
+        # poly2 = zeros(0, 2);
+
+        # # indices of edges intersecting the plane
+        # ind = find(vof ~= vof([2:end 1]));
+
+        # # compute intersection points: they are 2 for a convex polygon
+        # lines = createLine3d(face(ind, :), face(ind+1, :));
+        # pInt = intersectLinePlane(lines, plane);  # edge of intersection 
+
     # tool paths generation
     def generate_paths_and_normal(self):
         # tolerance used to identifying identical vertices
@@ -175,58 +212,56 @@ class WearPath():
 
         # loop over layers using multi-threaded process
         # parfor layer = 1:nlayers
-        pool = multiprocessing.Pool()
-        pool.map(self.path_loop, range(nlayers))
-        pool.close()
-        pool.join()   
-        print('done')
 
-    def path_loop(self):
-        print("threading should go here")
-        # layer_paths = {}
+    #FIXME: add multiprocessing
+    #     pool = multiprocessing.Pool()
+    #     pool.map(self.path_loop, range(nlayers))
+    #     pool.close()
+    #     pool.join()   
+    #     print('done')
 
-#                 verts = mesh(layer).vertices
-#                 faces = mesh(layer).faces
+    # def path_loop(self):
+    #     print("threading should go here")
 
-#                 layer_clippers = clippers{layer,1}
+        for layer in range(nlayers):
+            verts = self.Meshes.reconstructed_vertices[layer]
+            faces = self.Meshes.reconstructed_faces[layer]
 
-#                 cr = 1
-#                 for c = 1: size(layer_clippers,1)
-                    
-# #                     if layer  == 3 && cr == 14
-# #                         dbstop at 198
-# #                     
+            layer_clippers = clippers[layer]
 
-#                     clipper = layer_clippers(c,:)
+            cr = 1
+            for c in range(len(layer_clippers)):
+                # Get plane clipper
+                clipper = layer_clippers[c]
+                
+                # determine position of each veritix relative to plane
+                vo = self.below_plane(verts, clipper)
 
-#                     # determine position of each veritix 0: above, 1: below
-#                     vo = isPointAboveOrBelowPlane(verts, clipper, 'below')
+                # no intersection occurs if points ALL above or ALL below
+                if np.all(vo == -1) or np.all(vo == 1):
+                    continue
 
-#                     # testing if no intersection occures
-#                     if all(vo == 1) || all(vo == 0)
-#                         continue
-                    
+                # otherwise handle intersection
+                path = []
+                grouped_path = {}
 
-#                     # if intersection, initiating new arraies
-#                     path = []
-#                     grouped_path = {}
+                # iterating over faces
+                for f in range(len(faces)):
+                    fac = faces[f]      # faces indices
+                    vof = vo[fac]         # vertices location
 
-#                     # iterating over faces
-#                     for f = 1:size(faces,1)
-#                         fac = faces(f,:)      # faces indices
-#                         vof = vo(fac)         # vertices location
+                    # processing the faces that intersect with the plane only
+                    if sum(vof) == 0:
+                        continue        # no intersection with self face
 
-#                         # processing the faces that intersect with the plane only
-#                         if sum(vof) == 0 continue        # no intersection with self face
+                    path.append(self.slice_face(verts[fac], vof, clipper))     # adding clipped edge to paths
 
-#                         path = [path sliceFace(verts(fac,:),vof,clipper)]     # adding clipped edge to paths
-
-                    
+            
 
 #                     # checking if no intersection happens, in case of two valleys
 #                     if isempty(path)
 #                         continue
-                    
+            
 
 #                     # arrange clipped points
 #                     path = sortrows(path)
@@ -246,11 +281,11 @@ class WearPath():
 #                                 iter(inds) = true
 #                             else
 #                                 iter(inds) = true
-                            
+                    
 #                         else
 #                             continue
-                        
-                    
+                
+            
 #                     path = path(uniq_inds,:)
 
 
@@ -269,14 +304,14 @@ class WearPath():
 #                             inds2 = ismembertol(temp,path(,:),tol,'ByRows', true)  # last point
 #                             if sum(inds1) == 0 
 #                                 temp = [path(1,:) temp]
-                            
+                    
 #                             if sum(inds2) == 0
 #                                 temp = [temp path(,:)]
-                            
+                    
 #                             grouped_path{k,1} = temp # grouping connected paths
 #                             k = k+1
-                        
-                    
+                
+            
 
 #                     # remove path if it less than threshold:
 #                     cr2 = 1 flag = false
@@ -287,13 +322,13 @@ class WearPath():
 #                             layer_paths{cr,1}{cr2,1} = [grouped_path{group,1}(1:2:-1,:) grouped_path{group,1}(,:)]   # removing mid points (connection points)
 #                             cr2 = cr2 + 1
 #                             flag = true
-                        
-                    
-                    
+                
+            
+            
 #                     # if there are paths after checking the length of path
 #                     if flag
 #                         cr = cr + 1 
-                    
+            
 
 #                   # (  clipper )
 
@@ -355,8 +390,8 @@ class WearPath():
 #                         temp = crossProduct3d(vn, cladVertor)
 #                         normal{nPaths,1}{q,1} = [temp(:,1:2), abs(temp(:,3))]  # making sure it is pointing upwards in the build direction
 #                         midp{nPaths,1}{q,1} = midEdge(layer_paths{nPaths,1}{q,1})
-                    
-                
+            
+        
 
 
 #                 # processing points and normals
@@ -378,20 +413,20 @@ class WearPath():
 #                         else
 #                             [layer_paths{i,1}{q,1}, ~, ~, N_indes] = interparc(nPoints,one_path(:,1),one_path(:,2),one_path(:,3), 'linear')
 #                             normal{i,1}{q,1} = one_path_normals(N_indes,:)
-                        
+                
 
 #                         # computing depth of points
 #                         jsize = size(layer_paths{i,1}{q,1},1)
 #                         path_depths = zeros(jsize,1)
 #                         for j = 1:jsize
 #                             path_depths(j,1) = distancePointPlane(layer_paths{i,1}{q,1}(j,:), top_plane)
-                        
+                
 
 #                         layer_depth{i,1}{q,1} = path_depths
 
-                    
+            
 
-                
+        
 
 
 #                 paths{layer,1} = layer_paths

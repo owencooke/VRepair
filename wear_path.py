@@ -164,6 +164,10 @@ class WearPath():
             results[i] = plane.side_point(points[i])
         return results
 
+    #FIXME: verify accuracy compared to MATLAB function
+    def ismembertol(self, a, b, tol):
+        return np.all(np.abs(a-b) <= tol, axis=1)
+
     def slice_face(self, face, vof, plane):
         # returns the edge of sliced face by plane.
         # Input:
@@ -249,7 +253,7 @@ class WearPath():
 
                 # otherwise handle intersection
                 path = np.empty((0,3))
-                grouped_path = {}
+                grouped_path = []
 
                 # iterating over faces
                 for f in range(len(faces)):
@@ -270,52 +274,51 @@ class WearPath():
                 path.sort(axis=0)
 
                 # clean up paths in case of defected mesh
-                # path(isnan(path(:,1)),:) = []      # removing any NAN rows
-                # uniq_inds = true(size(path,1),1)
-                # iter = false(size(path,1),1)         # keep track of rows
-#                     for row = 1:size(path,1)
-#                         # skip if points already checked before
-#                         if ~iter(row)
-#                             # one point at time
-#                             inds = ismembertol(path,path(row,:),tol,'ByRows', true)
-#                             if sum(inds) > 2  # if same point occurs more than two times
-#                                 temp = find(inds == 1)
-#                                 uniq_inds(temp(3:)) = false
-#                                 iter(inds) = true
-#                             else
-#                                 iter(inds) = true
+                path = path[~np.isnan(path).any(axis=1)]       # removing any NAN rows
+                uniq_inds = np.full(len(path), True)
+                iter = np.full(len(path), False)         # keep track of rows
+
+                # Compute relative tolerance
+                rel_tol = tol*np.max(np.abs(path))
+
+                for row in range(len(path)):
+                    # skip if points already checked before
+                    if ~iter[row]:
+                        # one point at time
+                        inds = self.ismembertol(path, path[row], rel_tol)
+
+                        if sum(inds) > 2:  # if same point occurs more than two times
+                            temp = np.where(inds == 1)[0]
+                            uniq_inds[temp[3:]] = False
+                            iter[inds] = True
+                        else:
+                            iter[inds] = True
+
+                path = path[uniq_inds]
+
+                # search for separation points in paths and group the connected paths
+                k = 1   # number of disconnected paths
+                s_p = 1 # starting point of new group
+                for row in range(len(path)): #2:size(path,1)
+                    #FIXME: check ismembertol implementation
+                    inds = np.all(np.abs(path-path[row]) <= rel_tol, axis=1)
+                    if sum(inds) == 1 and s_p != row:
+                        grouped_path.append(path[s_p:row])  # grouping connected paths
+                        s_p = row+1
+                        k += 1
+                    elif row == len(path)-1 and not grouped_path:
+                        temp = path[1:-1] # points w/o first and final
+                        inds1 = self.ismembertol(temp, path[0], rel_tol) # first point
+                        inds2 = self.ismembertol(temp, path[-1],rel_tol) # last point
+                        if sum(inds1) == 0:
+                            temp = np.append(temp, path[0], axis=0)
                     
-#                         else
-#                             continue
+                        if sum(inds2) == 0:
+                            temp = np.append(temp, path[-1], axis=0)
+                    
+                        grouped_path.append(temp) # grouping connected paths
+                        k += 1
                 
-            
-#                     path = path(uniq_inds,:)
-
-
-#                     # search for separation points in paths and group the connected paths
-#                     k = 1   # number of disconnected paths
-#                     s_p = 1 # starting point of new group
-#                     for row = 1:size(path,1)  #2:size(path,1)
-#                         inds = ismembertol(path,path(row,:),tol,'ByRows', true)
-#                         if sum(inds) == 1 && s_p ~= row
-#                             grouped_path{k,1} = path(s_p:row,:)  # grouping connected paths
-#                             s_p = row+1
-#                             k = k+1
-#                         elseif row == size(path,1) && isempty(grouped_path)
-#                             temp = path(2:-1,:)  # points in middle
-#                             inds1 = ismembertol(temp,path(1,:),tol,'ByRows', true)    # first point
-#                             inds2 = ismembertol(temp,path(,:),tol,'ByRows', true)  # last point
-#                             if sum(inds1) == 0 
-#                                 temp = [path(1,:) temp]
-                    
-#                             if sum(inds2) == 0
-#                                 temp = [temp path(,:)]
-                    
-#                             grouped_path{k,1} = temp # grouping connected paths
-#                             k = k+1
-                
-            
-
 #                     # remove path if it less than threshold:
 #                     cr2 = 1 flag = false
 #                     for group = 1:size(grouped_path,1)

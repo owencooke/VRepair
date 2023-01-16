@@ -1,9 +1,13 @@
 import numpy as np
 from math import radians, ceil, floor
-from rigid3d import rotation_around_z
-from plane import BoundingBox
+from scipy.interpolate import LinearNDInterpolator
 from skspatial.objects import Plane, Line
 import multiprocessing
+
+from rigid3d import rotation_around_z
+from plane import BoundingBox
+from multicell import MultiCell
+from interparc import interpcurve
 
 class WearPath():
     def __init__(self, meshes_obj, clad_params):
@@ -204,6 +208,15 @@ class WearPath():
 
         return intersections
 
+    # return numpy array of the differences between subsequent points
+    # verified by unit testing
+    def diff(self, points):
+        # Return vectorized subtraction, ignoring first index
+        return (points - np.roll(points,1, axis=0))[1:]
+
+    def path_length(self, points):
+        return sum(np.sqrt(np.sum(points**2,axis=1)))
+
     # tool paths generation
     def generate_paths_and_normal(self):
         # tolerance used to identifying identical vertices
@@ -218,7 +231,7 @@ class WearPath():
 
         # preallocating
         paths = []
-        #layer_paths = {}
+        layer_paths = MultiCell()
 
         # loop over layers using multi-threaded process
         # parfor layer = 1:nlayers
@@ -300,8 +313,7 @@ class WearPath():
                 k = 1   # number of disconnected paths
                 s_p = 1 # starting point of new group
                 for row in range(len(path)): #2:size(path,1)
-                    #FIXME: check ismembertol implementation
-                    inds = np.all(np.abs(path-path[row]) <= rel_tol, axis=1)
+                    inds = self.ismembertol(path, path[row], rel_tol)
                     if sum(inds) == 1 and s_p != row:
                         grouped_path.append(path[s_p:row])  # grouping connected paths
                         s_p = row+1
@@ -319,106 +331,70 @@ class WearPath():
                         grouped_path.append(temp) # grouping connected paths
                         k += 1
                 
-#                     # remove path if it less than threshold:
-#                     cr2 = 1 flag = false
-#                     for group = 1:size(grouped_path,1)
-#                         d = diff(grouped_path{group,1}(:,:))
-#                         length = sum(sqrt(sum(d.^2,2)))
-#                         if length >= threshold
-#                             layer_paths{cr,1}{cr2,1} = [grouped_path{group,1}(1:2:-1,:) grouped_path{group,1}(,:)]   # removing mid points (connection points)
-#                             cr2 = cr2 + 1
-#                             flag = true
+                # remove path if it less than threshold:
+                cr2 = 1
+                flag = False
+                for g in range(len(grouped_path)):
+                    d = self.diff(grouped_path[g])
+                    if self.path_length(d) >= threshold:
+                        # removing mid points (connection points)
+                        x = np.append(grouped_path[g][0::2], [grouped_path[g][-1]], axis=0)
+                        layer_paths.set(x, cr, cr2)
+                        cr2 += 1
+                        flag = True
                 
+                # if there are paths after checking the length of path
+                if flag:
+                    cr += 1 
+
+            ### normals generation:
+            # first clipper normal in each layer:
+            cladVertor = clippers[layer][0].normal
+
+
+            sz = len(layer_paths)
+            normal = MultiCell()
+            midp = MultiCell()
+
+            for nPaths in range(sz):
+                for q in range(layer_paths.len_subset(nPaths)):
+                    d = self.diff(layer_paths.get(nPaths,q))
+                    vn = d / np.linalg.norm(d)
+                    cross = np.cross(vn, cladVertor)
+
+                    # make sure it is pointing upwards in the build direction
+                    np.abs(cross[:,2], out=cross[:,2])
+                    normal.set(cross, nPaths, q)
+
+                    # get midpoint
+                    m = layer_paths.get(nPaths,q)
+                    points = np.zeros((len(m)-1, 3))
+                    for i in range(len(m)-1):
+                        points[i] = np.mean(m[i:i+2], axis=0)
+                    midp.set(points, nPaths, q)
             
-            
-#                     # if there are paths after checking the length of path
-#                     if flag
-#                         cr = cr + 1 
-            
+            # processing points and normals
+            top_plane = self.Meshes.reconstructed_BoundingBoxes[layer].get_plane("top")
+            layer_depth = {}
+            for i in range(len(layer_paths)):  # loop over paths for one layer
+                for q in range(layer_paths.len_subset(i)):
+                    # one path and its normals on one layer
+                    one_path = layer_paths.get(i,q)  # one path array
+                    one_path_normals = normal.get(i,q)
 
-#                   # (  clipper )
+                    d = self.diff(one_path)
+                    pathLength = self.path_length(d)
 
-
-#                 #                 # processing paths using (arch height method)
-#                 #                 for group = 1:size(layer_paths,1)
-#                 #                     # one group of paths in layer
-#                 #                     for path = 1:size(layer_paths{group,1},1)
-#                 #                         # all points in path, except first and last
-#                 #                         points = layer_paths{group,1}{path,1}(:,:)
-#                 #                         sz = size(points,1)
-#                 #                         new_points = points(1,:)
-#                 #                         inds_points = false(sz,1) # track points
-#                 #                         for p = 1:sz
-#                 #                             if ~inds_points(p)
-#                 #                                 d_max = 0
-#                 #                                 cr3 = 1
-#                 #                                 pt_s = points(p,:)
-#                 #                                 mid_points = []
-#                 #                                 while d_max < max_laser_defocus
-#                 #                                     # terminate if last point
-#                 #                                     if sz == cr3+1
-#                 #                                        I = sz
-#                 #                                        break
-#                 #                                     
-#                 #                                     pt_m = points(p+cr3,:)
-#                 #                                     mid_points = [mid_points pt_m]
-#                 #                                     pt_e = points(p+1+cr3,:)
-#                 #                                     line = createLine3d(pt_s,pt_e)
-#                 #                                     d = distancePointLine3d(mid_points(:,:), line)
-#                 #                                     [d_max, I] = max(d(:))
-#                 #                                     cr3 = cr3 + 1
-#                 #                                 
-#                 #                                 new_points = [new_points points(p-1+I,:)]
-#                 #                                 inds_points(p:p-1+I,:) = true
-#                 #                             else
-#                 #                                 continue
-#                 #                             
-#                 #
-#                 #                         
-#                 #                         points = [points layer_paths{group,1}{path,1}(,:)]
-#                 #                         layer_paths{group,1}{path,1} = points  # new path
-#                 #                     
-#                 #                 
-
-
-#                 ### normals generation:
-#                 # first clipper normal in each layer:
-#                 cladVertor = planeNormal(clippers{layer,1}(1,:))
-
-#                 # preallocating:
-#                 sz = size(layer_paths,1)
-#                 normal = cell(sz,1)
-#                 midp = cell(sz,1)
-
-#                 for nPaths = 1 : sz
-#                     for q = 1: size(layer_paths{nPaths,1},1)
-#                         vn = normalizeVector3d( diff(layer_paths{nPaths,1}{q,1}))
-#                         temp = crossProduct3d(vn, cladVertor)
-#                         normal{nPaths,1}{q,1} = [temp(:,1:2), abs(temp(:,3))]  # making sure it is pointing upwards in the build direction
-#                         midp{nPaths,1}{q,1} = midEdge(layer_paths{nPaths,1}{q,1})
-            
-        
-
-
-#                 # processing points and normals
-#                 scan_step = max_laser_defocus
-#                 top_plane = mesh(layer).BoundingBox.planes('top').plane
-#                 layer_depth = {}
-#                 for i = 1:size(layer_paths,1)    # loop over paths for one layer
-#                     for q = 1:size(layer_paths{i,1},1)
-#                         # one path and its normals on one layer
-#                         one_path = layer_paths{i,1}{q,1}                                                    # one path array
-#                         one_path_normals = normal{i,1}{q,1}(:,:)
-
-#                         d = diff(one_path)
-#                         pathLength = sum(sqrt(sum(d.^2,2)))
-#                         nPoints = fix( pathLength / scan_step)                                         # number of new points in path
-#                         if nPoints == 1  # if only one point, take first and  points.
-#                             layer_paths{i,1}{q,1} = [one_path(1,:) one_path(,:)]
-#                             normal{i,1}{q,1} = [one_path_normals(1,:) one_path_normals(,:)]
-#                         else
-#                             [layer_paths{i,1}{q,1}, ~, ~, N_indes] = interparc(nPoints,one_path(:,1),one_path(:,2),one_path(:,3), 'linear')
-#                             normal{i,1}{q,1} = one_path_normals(N_indes,:)
+                    # number of new points in path
+                    nPoints = np.fix(pathLength / max_laser_defocus)
+                    if nPoints == 1:
+                        # if only one point, take first and end points
+                        layer_paths.set(one_path[[0,-1]], i, q)
+                        normal.set(one_path_normals[[0,-1]], i, q)
+                    # else:
+                        p, N_indes = interpcurve(nPoints,one_path)
+                        layer_paths.set(p, i, q)
+                        normal.set(one_path_normals[N_indes], i, q)
                 
 
 #                         # computing depth of points
@@ -544,3 +520,50 @@ class WearPath():
 
 #             out2 = self.Depths
 #             out3 = self.Normals
+
+if __name__ == "__main__":
+    # p = np.array([
+    #     [4.14198101220914,	42.1175013950893,	-2.26053702886203],
+    #     [4.16299979917466,	42.1175013950893,	-2.26200835758027],
+    #     [4.16299979917466,	42.1175013950893,	-2.26200835758027],
+    #     [4.20503794582468,	42.1175013950893,	-2.26053702886203],
+    # ])
+    
+    # d = WearPath.diff(None, p)
+    # length = sum(np.sqrt(np.sum(d**2,axis=1)))
+    # print(length)
+
+    # m = np.array([
+    #     [4.74561799284544,	42.1175013950893,	-2.26053702886203],
+    #     [8.16299979917466,	42.1175013950893,	-2.38014487063247],
+    #     [8.47532796933506,	42.1175013950893,	-2.38014487063247],
+    #     [10.1840188724997,	42.1175013950893,	-2.26053702886203]
+    # ])
+    # points = np.zeros((len(m)-1, 3))
+    # for i in range(len(m)-1):
+    #     points[i] = np.mean(m[i:i+2], axis=0)
+    # print(points)
+
+    #Testing scipy linear interpolate
+    m = np.array([
+        [1.18123127328309,	47.0664149693081,	-2.26053702886203],
+        [2.21117165811010,	47.0664149693081,	-2.33263352371475],
+        [2.39737740183979,	47.0664149693081,	-2.34566804652998],
+        [4.16299979917466,	47.0664149693081,	-2.40746456102411],
+        [6.39737740183979,	47.0664149693081,	-2.48566743617842],
+        [8.16299979917466,	47.0664149693081,	-2.54746395067254],
+        [10.3973774018398,	47.0664149693081,	-2.39105820036392],
+        [11.5750137883302,	47.0664149693081,	-2.30862401269569],
+        [12.1629997991747,	47.0664149693081,	-2.26746517137567],
+        [12.3609421975938,	47.0664149693081,	-2.26053702886203]
+    ])
+
+    # x = m[0]
+    # y= m[1]
+    # z = m[2]
+
+    # # Create coordinate pairs
+    # cartcoord = list(zip(x, y))
+
+    interp = LinearNDInterpolator(m, np.linspace(0, 1, len(m)))
+    

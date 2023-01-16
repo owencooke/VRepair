@@ -1,6 +1,5 @@
 import numpy as np
 from math import radians, ceil, floor
-from scipy.interpolate import LinearNDInterpolator
 from skspatial.objects import Plane, Line
 import multiprocessing
 
@@ -231,6 +230,8 @@ class WearPath():
 
         # preallocating
         paths = []
+        normals = []
+        depths = []
         layer_paths = MultiCell()
 
         # loop over layers using multi-threaded process
@@ -351,7 +352,6 @@ class WearPath():
             # first clipper normal in each layer:
             cladVertor = clippers[layer][0].normal
 
-
             sz = len(layer_paths)
             normal = MultiCell()
             midp = MultiCell()
@@ -397,46 +397,25 @@ class WearPath():
                         normal.set(one_path_normals[N_indes], i, q)
                 
 
-#                         # computing depth of points
-#                         jsize = size(layer_paths{i,1}{q,1},1)
-#                         path_depths = zeros(jsize,1)
-#                         for j = 1:jsize
-#                             path_depths(j,1) = distancePointPlane(layer_paths{i,1}{q,1}(j,:), top_plane)
-                
-
-#                         layer_depth{i,1}{q,1} = path_depths
-
+                    # computing depth of points
+                    point = layer_paths.get(i,q)
+                    jsize = len(p)
+                    path_depths = np.zeros((jsize,1))
+                    for j in range(jsize):
+                        path_depths[j] = top_plane.distance_point_signed(point[j])
             
-
-        
-
-
-#                 paths{layer,1} = layer_paths
-#                 normals{layer,1} = normal
-#                 depths{layer,1} = layer_depth
-#                 #midpoints{layer,1} = midp
+                    layer_depth.set(path_depths, i, q)
 
 
+            paths.append(layer_paths)
+            normals.append(normal)
+            depths.append(layer_depth)
+            #midpoints{layer,1} = midp
 
-
-#              # ( of layers)
-
-
-
-#             # update object
-#             self.Paths = paths
-#             self.Normals = normals
-#             self.Depths = depths
-        
-
-    
-
-
-
-
-
-
-
+        # update object
+        self.Paths = paths
+        self.Normals = normals
+        self.Depths = depths
 
 #     methods(Access = public)
 
@@ -462,12 +441,6 @@ class WearPath():
 #             else
 #                 warning("System is already in #d", to_system)
             
-
-        
-
-
-
-
 
 
 #         function self = convert(self, to_coord)
@@ -543,27 +516,4 @@ if __name__ == "__main__":
     # for i in range(len(m)-1):
     #     points[i] = np.mean(m[i:i+2], axis=0)
     # print(points)
-
-    #Testing scipy linear interpolate
-    m = np.array([
-        [1.18123127328309,	47.0664149693081,	-2.26053702886203],
-        [2.21117165811010,	47.0664149693081,	-2.33263352371475],
-        [2.39737740183979,	47.0664149693081,	-2.34566804652998],
-        [4.16299979917466,	47.0664149693081,	-2.40746456102411],
-        [6.39737740183979,	47.0664149693081,	-2.48566743617842],
-        [8.16299979917466,	47.0664149693081,	-2.54746395067254],
-        [10.3973774018398,	47.0664149693081,	-2.39105820036392],
-        [11.5750137883302,	47.0664149693081,	-2.30862401269569],
-        [12.1629997991747,	47.0664149693081,	-2.26746517137567],
-        [12.3609421975938,	47.0664149693081,	-2.26053702886203]
-    ])
-
-    # x = m[0]
-    # y= m[1]
-    # z = m[2]
-
-    # # Create coordinate pairs
-    # cartcoord = list(zip(x, y))
-
-    interp = LinearNDInterpolator(m, np.linspace(0, 1, len(m)))
-    
+    pass

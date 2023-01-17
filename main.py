@@ -31,7 +31,7 @@ if __name__ == "__main__":
     # post-processing section
     # model.display_pcd()
     # model.display_raw_mesh()
-    model.display_reconst_meshes()
+    # model.display_reconst_meshes()
     model.display_toolpaths()
 
     # exporting data:

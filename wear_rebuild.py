@@ -1,6 +1,7 @@
 import numpy as np
 import open3d as o3d
 import matplotlib.pyplot as plt
+import matplotlib.quiver
 
 from rigid3d import RigidTransform
 from wear_ptcd import WearPointCloud
@@ -51,8 +52,8 @@ class WearRebuild():
         self.Clad_Params = self.Meshes.Clad_Params   # update clad_params
 
         # # 3- paths object constuction
-        # self.Paths = WearPath(self.Meshes, self.Clad_Params) 
-        # self.Clad_Params = self.Paths.Clad_Params   # update clad_params
+        self.Paths = WearPath(self.Meshes, self.Clad_Params) 
+        self.Clad_Params = self.Paths.Clad_Params   # update clad_params
 
     # export point cloud
     def pcd_export(self,to_system, to_coordinate): 
@@ -86,7 +87,7 @@ class WearRebuild():
         # for layer = 1 : size(paths,1)
         #     for path = 1 : size(paths{layer,1},1)
         #             #for q = 1: size(paths{layer,1}{path,1},1)
-        #         sz = size(paths{layer,1}{path,1}(:,1),1) 
+        #         sz = size(paths{layer,1}{path,1}[:,1],1) 
         #         if sz >= 2   # if there are more than two points ( because path can not be less than two points )
         #             code = repmat(2,sz,1)  code(1) = 0  code(end) = 1 
         #             DataOut = [DataOut  repmat(layer,sz,1), code, depths{layer,1}{path,1}{1,1}(:), paths{layer,1}{path,1}(:,:), normals{layer,1}{path,1}{1,1}(:,:)] 
@@ -132,17 +133,33 @@ class WearRebuild():
             f = triangles[i]
             v = vertices[i]
             ax.plot_trisurf(v[:,0], v[:,1], v[:,2], triangles=f, color=cmap(i))
-            # plt.title("Layer:" + str(i))
-            # plt.show()
         plt.show()
 
     # toolpaths display
     def display_toolpaths(self):
-        # toolpathsDisplay(self.Paths.Paths, ...     # paths
-        #     self.Paths.Normals, ...                # normals
-        #     self.NEW_FIGURE, ...
-        #     self.SHOW_MESH, ...
-        #     self.PLOTS_STYLE, ...
-        #     self.NORMALS_SWITCH, ...
-        #     self.NORMALS_SCALE)
-        pass
+        # using matplotlib
+        # fig = plt.figure(figsize=plt.figaspect(0.5))
+        # ax = fig.add_subplot(1, 1, 1, projection='3d')
+        # paths plotting:
+        paths = self.Paths.Paths
+        n = len(paths)
+        # cmap = plt.cm.get_cmap("hsv", n)
+        for i in range(n):
+            for j in range(len(paths[i])):
+                for q in range(paths[i].len_subset(j)):
+                    coords = paths[i].get(j,q)
+                    # ax.plot_wireframe(coords[:,0], coords[:,1], coords[:,2], color=cmap(i))
+
+        # normal plotting:
+        # normals = self.Paths.Normals
+        # for i in range(len(normals)):
+        #     for j in range(len(normals[i])):
+        #         for q in range(len(normals[i][j])):
+        #             ax.quiver3D(paths[i][j][q][:,1],
+        #                 paths[i][j][q][:,2],
+        #                 paths[i][j][q][:,3],
+        #                 normals[i][j][q][:,1],
+        #                 normals[i][j][q][:,2],
+        #                 normals[i][j][q][:,3],
+        #                 0.03, colors=cmap(i))
+        # plt.show()

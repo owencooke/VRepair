@@ -10,11 +10,7 @@ from interparc import interpcurve
 
 class WearPath():
     def __init__(self, meshes_obj, clad_params):
-        #:param meshes_obj: wear path object
-        #:param clad_params: cladding parameters
-        
         self.Meshes = meshes_obj
-
         self.Transformation = meshes_obj.Transformation
         self.System = meshes_obj.System
         self.Coordinate = meshes_obj.Coordinate
@@ -29,23 +25,16 @@ class WearPath():
         # normal vectors generation
         #self = generate_normal(self)
 
-    # clippers generation
     def generate_clippers(self):
         # init vars
         mesh = self.Meshes.raw_mesh
-        clad_ori = self.Clad_Params.CLAD_ORIENTATION
         clad_width = self.Clad_Params.CLAD_WIDTH
         max_clad_step = self.Clad_Params.MAX_CLAD_STEP
         clad_cross_hatching = self.Clad_Params.CLAD_CROSS_HATCHING
         layer_offset = self.Clad_Params.LAYER_OFFSET
-        nlayers = self.Clad_Params.LAYERS
-
-        # preallocating var
-        clippers = []
-        layers_clad_dirs = []
 
         # initial angle
-        clad_ori = radians(clad_ori)
+        clad_ori = radians(self.Clad_Params.CLAD_ORIENTATION)
         delta = np.pi/2 * clad_cross_hatching
         
         # precomputing for speed
@@ -60,7 +49,9 @@ class WearPath():
             layer_rot_matrix2 = rotation_around_z(-(clad_ori+delta))
             rot_mesh2 = mesh.transform(layer_rot_matrix2.mat)
         
-        for layer in range(nlayers):
+        # begin clipper generation
+        clippers = []
+        for layer in range(self.Clad_Params.LAYERS):
             if clad_cross_hatching == 1:
                 # main orientation
                 if layer % 2 == 1:
@@ -70,10 +61,8 @@ class WearPath():
                     layer_rot_matrix = layer_rot_matrix2
                     rot_mesh = rot_mesh2
 
-            # bounding box of rotated mesh
-            layer_Box = BoundingBox(rot_mesh.vertex.positions.numpy())
-
             # create clippped edge
+            layer_Box = BoundingBox(rot_mesh.vertex.positions.numpy())
             start_point = layer_Box.plane_center('front')
             end_point = layer_Box.plane_center('back')
             clad_edge = end_point - start_point
@@ -82,10 +71,8 @@ class WearPath():
             # calculating cladding parameters
             cal_clad_step, nClads, offset, cal_clads_overlap = self.calc_clad_step(clad_edge, max_clad_step, clad_width)
 
-
-            start_point = start_point + vector * offset
-
-            # for layer offset
+            # add layer offset
+            start_point += vector * offset
             if layer % 2 or layer_offset == 0:   # odd
                 # same start_point and same number of passes
                 start_point1 = start_point
@@ -93,14 +80,11 @@ class WearPath():
                 # updating the starting point according to layers offset
                 start_point1 = start_point + (layer_offset * vector * cal_clad_step)
                 nClads -= 1    # removing one clad on self layer
-            
-            # preallocating
-            # layer_planes = np.zeros((nClads,9))
-            layer_planes = []
 
             # generating planes, transform to orginal position
+            layer_planes = []
             for i in range(nClads):
-                point = start_point1 + vector * cal_clad_step * (i-1)
+                point = start_point1 + vector * cal_clad_step * i
     
                 # apply inverse transform to point and normal
                 transform = layer_rot_matrix.inverse()
@@ -113,8 +97,6 @@ class WearPath():
                 layer_planes.append(Plane(point=point, normal=vector))
 
             clippers.append(layer_planes)
-
-            layers_clad_dirs.append(clad_ori)   # in radian
 
         self.Clad_Params.CAL_CLAD_STEP = cal_clad_step
         self.Clad_Params.CAL_CALDS_OVERLAP = cal_clads_overlap
@@ -212,22 +194,35 @@ class WearPath():
     # tool paths generation
     def generate_paths_and_normal(self):
         # loop over layers using multi-threaded process
-        q = multiprocessing.Queue()
-        for i in range(self.Clad_Params.LAYERS):
-            p = multiprocessing.Process(target=self.path_loop, args=(i,q,))
-            p.start()
-
-        # Store output from multiprocessing queue
+        #FIXME: single process debug
         paths = []
         normals = []
         depths = []
+        #############################
+        
+        q = multiprocessing.Queue()
         for i in range(self.Clad_Params.LAYERS):
-            # Returns output or blocks until ready
-            output = q.get()
-            # Append each type of output
+            # p = multiprocessing.Process(target=self.path_loop, args=(i,q,))
+            # p.start()
+
+            #FIXME: single process debug
+            output = self.path_loop(i,q,)
             paths.append(output[0])
             normals.append(output[1])
             depths.append(output[2])
+            ###############################
+
+        # # Store output from multiprocessing queue
+        # paths = []
+        # normals = []
+        # depths = []
+        # for i in range(self.Clad_Params.LAYERS):
+        #     # Returns output or blocks until ready
+        #     output = q.get()
+        #     # Append each type of output
+        #     paths.append(output[0])
+        #     normals.append(output[1])
+        #     depths.append(output[2])
 
         # update object
         self.Paths = paths
@@ -244,8 +239,6 @@ class WearPath():
         # preallocating
         layer_paths = MultiCell()
 
-    #FIXME: remove and indent left for multiprocessing
-    # for layer in range(nlayers):
         verts = self.Meshes.reconstructed_vertices[layer]
         faces = self.Meshes.reconstructed_faces[layer]
 
@@ -275,8 +268,9 @@ class WearPath():
                 # processing the faces that intersect with the plane only
                 if sum(vof) == 0:
                     continue        # no intersection with self face
-
-                path = np.append(path, self.slice_face(verts[fac], vof, clipper), axis=0)     # adding clipped edge to paths
+                
+                # adding clipped edge to paths
+                path = np.append(path, self.slice_face(verts[fac], vof, clipper), axis=0)
 
             # checking if no intersection happens, in case of two valleys
             if not path.size:
@@ -338,6 +332,8 @@ class WearPath():
                 if self.path_length(d) >= threshold:
                     # removing mid points (connection points)
                     x = np.append(grouped_path[g][0::2], [grouped_path[g][-1]], axis=0)
+                    # if x.shape[1] != 3:
+                    #     continue
                     layer_paths.set(x, cr, cr2)
                     cr2 += 1
                     flag = True
@@ -359,7 +355,8 @@ class WearPath():
                 lp = layer_paths.get(nPaths,q)
                 if lp is None:
                     continue
-
+                # if lp.shape[1] != 3:
+                #     continue
                 d = self.diff(lp)
                 vn = d / np.linalg.norm(d)
                 cross = np.cross(vn, cladVertor)
@@ -411,7 +408,10 @@ class WearPath():
 
 
         output = [layer_paths, normal, layer_depth]
-        queue.put(output)
+        # queue.put(output)
+
+        #FIXME: single process debug
+        return output
 
 #     methods(Access = public)
 
@@ -429,7 +429,6 @@ class WearPath():
 #                         paths{group,1}{path,1} = tf_points
                     
                 
-
 #                 # update points and center
 #                 self.System = to_system
 #                 self.Transformation.Translation = -1 * self.Transformation.Translation        # flipping translation
@@ -437,7 +436,6 @@ class WearPath():
 #             else
 #                 warning("System is already in #d", to_system)
             
-
 
 #         function self = convert(self, to_coord)
 #             #convert Summary of self method goes here
@@ -461,11 +459,6 @@ class WearPath():
 #             self.Paths = paths
         
 
-
-
-
-
-
 #         function [out1, out2, out3] = export(self, to_system, to_coord)
 #             # Example: Paths.export('local', 'cart')
 #             # check if system is different
@@ -484,8 +477,6 @@ class WearPath():
 #                     out1 = temp.Paths
 #                 else
 #                     out1 = self.Paths
-                
-            
 
 #             out2 = self.Depths
 #             out3 = self.Normals

@@ -54,7 +54,6 @@ class WearMesh():
 
         # sliced meshes ( reconstructed meshes )
         self.sliced_meshes()
-        print('done')
 
     def calc_layer_step(self, edge, clad_height):
         #CALC_LAYER_STEP Calculate the layer step distance, and how many layer will fit in

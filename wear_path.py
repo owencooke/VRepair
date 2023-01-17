@@ -104,10 +104,8 @@ class WearPath():
     
                 # apply inverse transform to point and normal
                 transform = layer_rot_matrix.inverse()
-
                 point = np.append(point, 1)
                 point = transform.dot(point)[:3]
-
                 vector = np.append(vector, 0)
                 vector = transform.dot(vector)[:3]
 
@@ -180,7 +178,6 @@ class WearPath():
 
         # Output:
         # pInt: points of intersection (point, edges, nan).
-        # Processing
 
         # ensure last point is the same as the first one for polygon purpose
         if not np.array_equal(face[0], face[-1]):
@@ -189,12 +186,8 @@ class WearPath():
         # FIXME: not sure what this does, why any would ever equal 2
         # checking if the vertices are on the plane:
         # vof(vof == 2) = ~vof(any(vof ~= 2))
-        
-        # initialize empty polygon
-        # poly2 = zeros(0, 2);
 
         # indices of edges intersecting the plane
-        # ind = find(vof ~= vof([2:end 1]));
         ind = np.where( (vof != np.roll(vof, -1)) == 1)[0]
 
         # compute intersection points: they are 2 for a convex polygon
@@ -219,208 +212,206 @@ class WearPath():
     # tool paths generation
     def generate_paths_and_normal(self):
         # loop over layers using multi-threaded process
-        # #FIXME: move multiprocessing to init function and make this the iterable function
-        # q = multiprocessing.Queue()
-        # for i in range(nlayers):
-        #     p = multiprocessing.Process(target=self.path_loop, args=(q,))
-        #     p.start()
+        q = multiprocessing.Queue()
+        for i in range(self.Clad_Params.LAYERS):
+            p = multiprocessing.Process(target=self.path_loop, args=(i,q,))
+            p.start()
 
-        # # Do anything else you need in here
-        # time=np.empty(2,dtype='object')
-        # signal=np.empty(2,dtype='object')
-        # for i in range(2):
-        #     time[i], signal[i] = q.get() # Returns output or blocks until ready
-        # # Process output
-
-    # def path_loop(self):
-    #     print("threading should go here")
-
-        # tolerance used to identifying identical vertices
-        tol = 1.49011611938477e-08 #eps(1e8)
-        threshold = 3     # minimum clad path length (3 mm)
-
-        # vars
-        # mesh = self.Meshes.reconstructed_meshes
-        clippers = self.Clippers
-        max_laser_defocus = self.Clad_Params.MAX_LASER_DEFOCUS
-        nlayers = self.Clad_Params.LAYERS
-
-        # preallocating
+        # Store output from multiprocessing queue
         paths = []
         normals = []
         depths = []
-        layer_paths = MultiCell()
-
-        #FIXME: remove and indent left for multiprocessing
-        for layer in range(nlayers):
-            verts = self.Meshes.reconstructed_vertices[layer]
-            faces = self.Meshes.reconstructed_faces[layer]
-
-            layer_clippers = clippers[layer]
-
-            cr = 1
-            for c in range(len(layer_clippers)):
-                # Get plane clipper
-                clipper = layer_clippers[c]
-                
-                # determine position of each veritix relative to plane
-                vo = self.below_plane(verts, clipper)
-
-                # no intersection occurs if points ALL above or ALL below
-                if np.all(vo == -1) or np.all(vo == 1):
-                    continue
-
-                # otherwise handle intersection
-                path = np.empty((0,3))
-                grouped_path = []
-
-                # iterating over faces
-                for f in range(len(faces)):
-                    fac = faces[f]      # faces indices
-                    vof = vo[fac]         # vertices location
-
-                    # processing the faces that intersect with the plane only
-                    if sum(vof) == 0:
-                        continue        # no intersection with self face
-
-                    path = np.append(path, self.slice_face(verts[fac], vof, clipper), axis=0)     # adding clipped edge to paths
-
-                # checking if no intersection happens, in case of two valleys
-                if not path.size:
-                    continue
-        
-                # arrange clipped points
-                path.sort(axis=0)
-
-                # clean up paths in case of defected mesh
-                path = path[~np.isnan(path).any(axis=1)]       # removing any NAN rows
-                uniq_inds = np.full(len(path), True)
-                iter = np.full(len(path), False)         # keep track of rows
-
-                # Compute relative tolerance
-                rel_tol = tol*np.max(np.abs(path))
-
-                for row in range(len(path)):
-                    # skip if points already checked before
-                    if ~iter[row]:
-                        # one point at time
-                        inds = self.ismembertol(path, path[row], rel_tol)
-
-                        if sum(inds) > 2:  # if same point occurs more than two times
-                            temp = np.where(inds == 1)[0]
-                            uniq_inds[temp[3:]] = False
-                            iter[inds] = True
-                        else:
-                            iter[inds] = True
-
-                path = path[uniq_inds]
-
-                # search for separation points in paths and group the connected paths
-                k = 1   # number of disconnected paths
-                s_p = 1 # starting point of new group
-                for row in range(len(path)): #2:size(path,1)
-                    inds = self.ismembertol(path, path[row], rel_tol)
-                    if sum(inds) == 1 and s_p != row:
-                        grouped_path.append(path[s_p:row])  # grouping connected paths
-                        s_p = row+1
-                        k += 1
-                    elif row == len(path)-1 and not grouped_path:
-                        temp = path[1:-1] # points w/o first and final
-                        inds1 = self.ismembertol(temp, path[0], rel_tol) # first point
-                        inds2 = self.ismembertol(temp, path[-1],rel_tol) # last point
-                        if sum(inds1) == 0:
-                            temp = np.append(temp, path[0], axis=0)
-                    
-                        if sum(inds2) == 0:
-                            temp = np.append(temp, path[-1], axis=0)
-                    
-                        grouped_path.append(temp) # grouping connected paths
-                        k += 1
-                
-                # remove path if it less than threshold:
-                cr2 = 1
-                flag = False
-                for g in range(len(grouped_path)):
-                    d = self.diff(grouped_path[g])
-                    if self.path_length(d) >= threshold:
-                        # removing mid points (connection points)
-                        x = np.append(grouped_path[g][0::2], [grouped_path[g][-1]], axis=0)
-                        layer_paths.set(x, cr, cr2)
-                        cr2 += 1
-                        flag = True
-                
-                # if there are paths after checking the length of path
-                if flag:
-                    cr += 1 
-
-            ### normals generation:
-            # first clipper normal in each layer:
-            cladVertor = clippers[layer][0].normal
-
-            sz = len(layer_paths)
-            normal = MultiCell()
-            midp = MultiCell()
-
-            for nPaths in range(sz):
-                for q in range(layer_paths.len_subset(nPaths)):
-                    d = self.diff(layer_paths.get(nPaths,q))
-                    vn = d / np.linalg.norm(d)
-                    cross = np.cross(vn, cladVertor)
-
-                    # make sure it is pointing upwards in the build direction
-                    np.abs(cross[:,2], out=cross[:,2])
-                    normal.set(cross, nPaths, q)
-
-                    # get midpoint
-                    m = layer_paths.get(nPaths,q)
-                    points = np.zeros((len(m)-1, 3))
-                    for i in range(len(m)-1):
-                        points[i] = np.mean(m[i:i+2], axis=0)
-                    midp.set(points, nPaths, q)
-            
-            # processing points and normals
-            top_plane = self.Meshes.reconstructed_BoundingBoxes[layer].get_plane("top")
-            layer_depth = {}
-            for i in range(len(layer_paths)):  # loop over paths for one layer
-                for q in range(layer_paths.len_subset(i)):
-                    # one path and its normals on one layer
-                    one_path = layer_paths.get(i,q)  # one path array
-                    one_path_normals = normal.get(i,q)
-
-                    d = self.diff(one_path)
-                    pathLength = self.path_length(d)
-
-                    # number of new points in path
-                    nPoints = np.fix(pathLength / max_laser_defocus)
-                    if nPoints == 1:
-                        # if only one point, take first and end points
-                        layer_paths.set(one_path[[0,-1]], i, q)
-                        normal.set(one_path_normals[[0,-1]], i, q)
-                    # else:
-                        p, N_indes = interpcurve(nPoints,one_path)
-                        layer_paths.set(p, i, q)
-                        normal.set(one_path_normals[N_indes], i, q)
-                
-
-                    # computing depth of points
-                    point = layer_paths.get(i,q)
-                    jsize = len(p)
-                    path_depths = np.zeros((jsize,1))
-                    for j in range(jsize):
-                        path_depths[j] = top_plane.distance_point_signed(point[j])
-            
-                    layer_depth.set(path_depths, i, q)
-
-
-            paths.append(layer_paths)
-            normals.append(normal)
-            depths.append(layer_depth)
-            #midpoints{layer,1} = midp
+        for i in range(self.Clad_Params.LAYERS):
+            # Returns output or blocks until ready
+            output = q.get()
+            # Append each type of output
+            paths.append(output[0])
+            normals.append(output[1])
+            depths.append(output[2])
 
         # update object
         self.Paths = paths
         self.Normals = normals
         self.Depths = depths
+
+    def path_loop(self, layer, queue):
+        # tolerance used to identifying identical vertices
+        tol = 1.49011611938477e-08 #eps(1e8)
+        threshold = 3     # minimum clad path length (3 mm)
+
+        clippers = self.Clippers
+
+        # preallocating
+        layer_paths = MultiCell()
+
+    #FIXME: remove and indent left for multiprocessing
+    # for layer in range(nlayers):
+        verts = self.Meshes.reconstructed_vertices[layer]
+        faces = self.Meshes.reconstructed_faces[layer]
+
+        layer_clippers = clippers[layer]
+
+        cr = 1
+        for c in range(len(layer_clippers)):
+            # Get plane clipper
+            clipper = layer_clippers[c]
+            
+            # determine position of each veritix relative to plane
+            vo = self.below_plane(verts, clipper)
+
+            # no intersection occurs if points ALL above or ALL below
+            if np.all(vo == -1) or np.all(vo == 1):
+                continue
+
+            # otherwise handle intersection
+            path = np.empty((0,3))
+            grouped_path = []
+
+            # iterating over faces
+            for f in range(len(faces)):
+                fac = faces[f]      # faces indices
+                vof = vo[fac]         # vertices location
+
+                # processing the faces that intersect with the plane only
+                if sum(vof) == 0:
+                    continue        # no intersection with self face
+
+                path = np.append(path, self.slice_face(verts[fac], vof, clipper), axis=0)     # adding clipped edge to paths
+
+            # checking if no intersection happens, in case of two valleys
+            if not path.size:
+                continue
+    
+            # arrange clipped points
+            path.sort(axis=0)
+
+            # clean up paths in case of defected mesh
+            path = path[~np.isnan(path).any(axis=1)]       # removing any NAN rows
+            uniq_inds = np.full(len(path), True)
+            iter = np.full(len(path), False)         # keep track of rows
+
+            # Compute relative tolerance
+            rel_tol = tol*np.max(np.abs(path))
+
+            for row in range(len(path)):
+                # skip if points already checked before
+                if ~iter[row]:
+                    # one point at time
+                    inds = self.ismembertol(path, path[row], rel_tol)
+
+                    if sum(inds) > 2:  # if same point occurs more than two times
+                        temp = np.where(inds == 1)[0]
+                        uniq_inds[temp[3:]] = False
+                        iter[inds] = True
+                    else:
+                        iter[inds] = True
+
+            path = path[uniq_inds]
+
+            # search for separation points in paths and group the connected paths
+            k = 1   # number of disconnected paths
+            s_p = 1 # starting point of new group
+            for row in range(len(path)): #2:size(path,1)
+                inds = self.ismembertol(path, path[row], rel_tol)
+                if sum(inds) == 1 and s_p != row:
+                    grouped_path.append(path[s_p:row])  # grouping connected paths
+                    s_p = row+1
+                    k += 1
+                elif row == len(path)-1 and not grouped_path:
+                    temp = path[1:-1] # points w/o first and final
+                    inds1 = self.ismembertol(temp, path[0], rel_tol) # first point
+                    inds2 = self.ismembertol(temp, path[-1],rel_tol) # last point
+                    if sum(inds1) == 0:
+                        temp = np.append(temp, path[0], axis=0)
+                
+                    if sum(inds2) == 0:
+                        temp = np.append(temp, path[-1], axis=0)
+                
+                    grouped_path.append(temp) # grouping connected paths
+                    k += 1
+            
+            # remove path if it less than threshold:
+            cr2 = 1
+            flag = False
+            for g in range(len(grouped_path)):
+                d = self.diff(grouped_path[g])
+                if self.path_length(d) >= threshold:
+                    # removing mid points (connection points)
+                    x = np.append(grouped_path[g][0::2], [grouped_path[g][-1]], axis=0)
+                    layer_paths.set(x, cr, cr2)
+                    cr2 += 1
+                    flag = True
+            
+            # if there are paths after checking the length of path
+            if flag:
+                cr += 1 
+
+        ### normals generation:
+        # first clipper normal in each layer:
+        cladVertor = clippers[layer][0].normal
+
+        sz = len(layer_paths)
+        normal = MultiCell()
+        midp = MultiCell()
+
+        for nPaths in range(sz):
+            for q in range(layer_paths.len_subset(nPaths)):
+                lp = layer_paths.get(nPaths,q)
+                if lp is None:
+                    continue
+
+                d = self.diff(lp)
+                vn = d / np.linalg.norm(d)
+                cross = np.cross(vn, cladVertor)
+
+                # make sure it is pointing upwards in the build direction
+                np.abs(cross[:,2], out=cross[:,2])
+                normal.set(cross, nPaths, q)
+
+                # get midpoint
+                points = np.zeros((len(lp)-1, 3))
+                for i in range(len(lp)-1):
+                    points[i] = np.mean(lp[i:i+2], axis=0)
+                midp.set(points, nPaths, q)
+        
+        # processing points and normals
+        top_plane = self.Meshes.reconstructed_BoundingBoxes[layer].get_plane("top")
+        layer_depth = MultiCell()
+        for i in range(len(layer_paths)):  # loop over paths for one layer
+            for q in range(layer_paths.len_subset(i)):
+                # one path and its normals on one layer
+                one_path = layer_paths.get(i,q)
+                if one_path is None:
+                    continue
+                one_path_normals = normal.get(i,q)
+
+                d = self.diff(one_path)
+                pathLength = self.path_length(d)
+
+                # number of new points in path
+                nPoints = int(np.fix(pathLength / self.Clad_Params.MAX_LASER_DEFOCUS))
+                if nPoints == 1:
+                    # if only one point, take first and end points
+                    layer_paths.set(one_path[[0,-1]], i, q)
+                    normal.set(one_path_normals[[0,-1]], i, q)
+                # else:
+                    p, N_indes = interpcurve(nPoints,one_path)
+                    layer_paths.set(p, i, q)
+                    normal.set(one_path_normals[N_indes], i, q)
+            
+
+                # computing depth of points
+                point = layer_paths.get(i,q)
+                jsize = len(point)
+                path_depths = np.zeros((jsize,1))
+                for j in range(jsize):
+                    path_depths[j] = top_plane.distance_point_signed(point[j])
+        
+                layer_depth.set(path_depths, i, q)
+
+
+        output = [layer_paths, normal, layer_depth]
+        queue.put(output)
 
 #     methods(Access = public)
 

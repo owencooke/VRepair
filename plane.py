@@ -38,7 +38,7 @@ class BoundingBox():
             vertices.append(max)
         self.vertices = np.array(vertices)
 
-    #FIXME: refactor
+    #FIXME: refactor using numpy array masking and dict keys
     def get_face_coords(self, face):
         if face == "bottom":
             # 4 coords at lowest z value

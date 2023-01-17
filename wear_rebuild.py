@@ -1,9 +1,11 @@
-# import matplotlib
+import numpy as np
+import open3d as o3d
+import matplotlib.pyplot as plt
+
 from rigid3d import RigidTransform
 from wear_ptcd import WearPointCloud
 from wear_mesh import WearMesh
 from wear_path import WearPath
-import numpy as np
 
 '''class:`wear_rebuild` is a program for generating toolpaths for the
 repairing process of a wear using metal deposition modeling process. '''
@@ -48,9 +50,9 @@ class WearRebuild():
         self.Meshes = WearMesh(self.Point_Cloud, self.MeshMethod, self.RefinementFactor, self.Clad_Params) 
         self.Clad_Params = self.Meshes.Clad_Params   # update clad_params
 
-        # 3- paths object constuction
-        self.Paths = WearPath(self.Meshes, self.Clad_Params) 
-        self.Clad_Params = self.Paths.Clad_Params   # update clad_params
+        # # 3- paths object constuction
+        # self.Paths = WearPath(self.Meshes, self.Clad_Params) 
+        # self.Clad_Params = self.Paths.Clad_Params   # update clad_params
 
     # export point cloud
     def pcd_export(self,to_system, to_coordinate): 
@@ -98,30 +100,41 @@ class WearRebuild():
     '''MATPLOTLIB GRAPHS'''
     # point cloud display
     def display_pcd(self):
-        # pcdDisplay(self.Point_Cloud.PCD_Obj, ...
-        #     self.NEW_FIGURE, ...
-        #     self.SHOW_PCD, ...
-        #     self.PLOTS_STYLE) 
-        pass 
-
+        o3d.visualization.draw_geometries([self.Point_Cloud.pcd])
 
     # raw mesh display
     def display_raw_mesh(self):
-        # meshDisplay(self.Meshes.Meshes.raw_mesh, ...
-        #     self.NEW_FIGURE, ...
-        #     self.SHOW_MESH, ...
-        #     self.PLOTS_STYLE) 
-        pass
+        # Using Open3D 
+        # o3d.visualization.draw([self.Meshes.raw_mesh])
+
+        # Using matplotlib
+        fig = plt.figure(figsize=plt.figaspect(0.5))
+        ax = fig.add_subplot(1, 1, 1, projection='3d')
+        # Plot data
+        vertices = self.Meshes.raw_mesh.vertex.positions.numpy()
+        triangles = self.Meshes.raw_mesh.triangle.indices.numpy()
+        ax.plot_trisurf(vertices[:,0], vertices[:,1], vertices[:,2], triangles=triangles, cmap=plt.cm.Spectral)
+        plt.show()
 
 
     # reconstructed meshes display
     def display_reconst_meshes(self):
-        # reconst_meshDisplay(self.Meshes.Meshes.reconstructed_meshes, ...
-        #     self.NEW_FIGURE, ...
-        #     self.SHOW_MESH, ...
-        #     self.PLOTS_STYLE) 
-        pass
-
+        # using matplotlib
+        fig = plt.figure(figsize=plt.figaspect(0.5))
+        ax = fig.add_subplot(1, 1, 1, projection='3d')
+        # mesh plotting:
+        vertices = self.Meshes.reconstructed_vertices
+        triangles = self.Meshes.reconstructed_faces
+        n = len(vertices)
+        cmap = plt.cm.get_cmap("hsv", n)
+        for i in range(n):
+            # drawBox3d(reconst_mesh(i).BoundingBox.bounds);
+            f = triangles[i]
+            v = vertices[i]
+            ax.plot_trisurf(v[:,0], v[:,1], v[:,2], triangles=f, color=cmap(i))
+            # plt.title("Layer:" + str(i))
+            # plt.show()
+        plt.show()
 
     # toolpaths display
     def display_toolpaths(self):

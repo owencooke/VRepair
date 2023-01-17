@@ -29,10 +29,10 @@ if __name__ == "__main__":
     print(end-start, "seconds")
 
     # post-processing section
-    # model.display_pcd;
-    # model.display_raw_mesh;
-    # model.display_reconst_meshes;
-    # model.display_toolpaths;
+    # model.display_pcd()
+    # model.display_raw_mesh()
+    model.display_reconst_meshes()
+    model.display_toolpaths()
 
     # exporting data:
     # # model.pcd_export('global', 'cyl')     # (to_system, to_coordinate)

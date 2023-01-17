@@ -23,7 +23,7 @@ class WearMesh():
         self.Clad_Params = clad_params 
 
         # wear point cloud to mesh ( raw mesh )
-        points = np.asarray(point_cloud_object.points)
+        points = np.asarray(point_cloud_object.points, dtype=np.float32)
         if method == 'delaunay':
             self.Delaunay = Delaunay(points[:,:2])   # meshing using MATLAB built-in function
             self.raw_vertices = points
@@ -54,6 +54,7 @@ class WearMesh():
 
         # sliced meshes ( reconstructed meshes )
         self.sliced_meshes()
+        print('done')
 
     def calc_layer_step(self, edge, clad_height):
         #CALC_LAYER_STEP Calculate the layer step distance, and how many layer will fit in
@@ -137,6 +138,7 @@ class WearMesh():
 
         slice_vertices = []
         slice_faces = []
+        mesh = self.raw_mesh
 
         for layer in range(nlayers-1):
             # slicing previous concatenated mesh using the top plane of box
@@ -144,10 +146,10 @@ class WearMesh():
             top = box.get_plane("top")
 
             # extracting lower mesh below top plane of bounding box
-            lower = self.raw_mesh.clip_plane(point=list(top.point), normal=[0,0,-1])                        
+            lower = mesh.clip_plane(point=list(top.point), normal=[0,0,-1])                        
 
             # extracturing upper mesh above top plane
-            upper = self.raw_mesh.clip_plane(point=list(top.point), normal=[0,0,1]) 
+            upper = mesh.clip_plane(point=list(top.point), normal=[0,0,1]) 
 
             # FIXME: is triangulation of new mesh faces ensured by o3d?    
             # tFb = triangulateFaces(Fb)    
@@ -170,10 +172,12 @@ class WearMesh():
 
             # merge projected mesh and remaining mesh from slicer (upper mesh):
             # new mesh above the plane of first layer
-            merged = proj_mesh + upper.to_legacy() # NOTE: can only combine legacy o3d Triangle meshes
+            # NOTE: can only combine legacy o3d Triangle meshes
+            mesh = proj_mesh + upper.to_legacy()
+            mesh = o3d.t.geometry.TriangleMesh.from_legacy(mesh)
 
-        slice_vertices.append(np.asarray(merged.vertices))
-        slice_faces.append(np.asarray(merged.triangles))
+        slice_vertices.append(mesh.vertex.positions.numpy())
+        slice_faces.append(mesh.triangle.indices.numpy())
         return slice_vertices, slice_faces
 
     def project_mesh(self, mesh_vertices, plane):

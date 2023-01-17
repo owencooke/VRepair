@@ -218,6 +218,23 @@ class WearPath():
 
     # tool paths generation
     def generate_paths_and_normal(self):
+        # loop over layers using multi-threaded process
+        # #FIXME: move multiprocessing to init function and make this the iterable function
+        # q = multiprocessing.Queue()
+        # for i in range(nlayers):
+        #     p = multiprocessing.Process(target=self.path_loop, args=(q,))
+        #     p.start()
+
+        # # Do anything else you need in here
+        # time=np.empty(2,dtype='object')
+        # signal=np.empty(2,dtype='object')
+        # for i in range(2):
+        #     time[i], signal[i] = q.get() # Returns output or blocks until ready
+        # # Process output
+
+    # def path_loop(self):
+    #     print("threading should go here")
+
         # tolerance used to identifying identical vertices
         tol = 1.49011611938477e-08 #eps(1e8)
         threshold = 3     # minimum clad path length (3 mm)
@@ -234,19 +251,7 @@ class WearPath():
         depths = []
         layer_paths = MultiCell()
 
-        # loop over layers using multi-threaded process
-        # parfor layer = 1:nlayers
-
-    #FIXME: add multiprocessing
-    #     pool = multiprocessing.Pool()
-    #     pool.map(self.path_loop, range(nlayers))
-    #     pool.close()
-    #     pool.join()   
-    #     print('done')
-
-    # def path_loop(self):
-    #     print("threading should go here")
-
+        #FIXME: remove and indent left for multiprocessing
         for layer in range(nlayers):
             verts = self.Meshes.reconstructed_vertices[layer]
             faces = self.Meshes.reconstructed_faces[layer]

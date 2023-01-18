@@ -135,35 +135,24 @@ class WearRebuild():
             ax.plot_trisurf(v[:,0], v[:,1], v[:,2], triangles=f, color=cmap(i))
         plt.show()
 
-    # toolpaths display
     def display_toolpaths(self):
-        # using matplotlib
-        fig = plt.figure(figsize=plt.figaspect(0.5))
+        fig = plt.figure(figsize=plt.figaspect(1))
         ax = fig.add_subplot(1, 1, 1, projection='3d')
-        # paths plotting:
+
+        # Plot using matplotlib (paths and normal vectors)
         paths = self.Paths.Paths
-        n = len(paths)
-        cmap = plt.cm.get_cmap("hsv", n)
-        for i in range(n):
+        for i in range(len(paths)):
+            color = np.random.rand(3,)
             for j in range(len(paths[i])):
                 for q in range(paths[i].len_subset(j)):
-                    coords = paths[i].get(j,q)
-                    try:
-                        ax.plot3D(coords[:,0], coords[:,1], coords[:,2], color=cmap(i))
-                        print('added line', i, j, q)
-                    except:
-                        continue
-
-        # normal plotting:
-        # normals = self.Paths.Normals
-        # for i in range(len(normals)):
-        #     for j in range(len(normals[i])):
-        #         for q in range(len(normals[i][j])):
-        #             ax.quiver3D(paths[i][j][q][:,1],
-        #                 paths[i][j][q][:,2],
-        #                 paths[i][j][q][:,3],
-        #                 normals[i][j][q][:,1],
-        #                 normals[i][j][q][:,2],
-        #                 normals[i][j][q][:,3],
-        #                 0.03, colors=cmap(i))
+                    # plot the 3D paths connecting each point
+                    p = paths[i].get(j,q)
+                    ax.plot3D(p[:,0], p[:,1], p[:,2], color=color)
+                    
+                    # plot normal arrow at each point in opposite color
+                    n = self.Paths.Normals[i].get(j,q)
+                    ax.quiver3D(p[:-1,0], p[:-1,1], p[:-1,2],
+                                    n[:,0], n[:,1], n[:,2],
+                                    colors=1-color, length=0.3,
+                                    normalize=True, linewidths=0.1)
         plt.show()

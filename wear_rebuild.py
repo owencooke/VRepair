@@ -138,17 +138,21 @@ class WearRebuild():
     # toolpaths display
     def display_toolpaths(self):
         # using matplotlib
-        # fig = plt.figure(figsize=plt.figaspect(0.5))
-        # ax = fig.add_subplot(1, 1, 1, projection='3d')
+        fig = plt.figure(figsize=plt.figaspect(0.5))
+        ax = fig.add_subplot(1, 1, 1, projection='3d')
         # paths plotting:
         paths = self.Paths.Paths
         n = len(paths)
-        # cmap = plt.cm.get_cmap("hsv", n)
+        cmap = plt.cm.get_cmap("hsv", n)
         for i in range(n):
             for j in range(len(paths[i])):
                 for q in range(paths[i].len_subset(j)):
                     coords = paths[i].get(j,q)
-                    # ax.plot_wireframe(coords[:,0], coords[:,1], coords[:,2], color=cmap(i))
+                    try:
+                        ax.plot3D(coords[:,0], coords[:,1], coords[:,2], color=cmap(i))
+                        print('added line', i, j, q)
+                    except:
+                        continue
 
         # normal plotting:
         # normals = self.Paths.Normals
@@ -162,4 +166,4 @@ class WearRebuild():
         #                 normals[i][j][q][:,2],
         #                 normals[i][j][q][:,3],
         #                 0.03, colors=cmap(i))
-        # plt.show()
+        plt.show()

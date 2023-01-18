@@ -20,10 +20,7 @@ class WearPath():
         self.generate_clippers()
 
         # processing paths generation
-        self.generate_paths_and_normal()
-
-        # normal vectors generation
-        #self = generate_normal(self)
+        self.generate_paths_and_normals()
 
     def generate_clippers(self):
         # init vars
@@ -192,49 +189,29 @@ class WearPath():
         return sum(np.sqrt(np.sum(points**2,axis=1)))
 
     # tool paths generation
-    def generate_paths_and_normal(self):
-        # loop over layers using multi-threaded process
-        #FIXME: single process debug
+    def generate_paths_and_normals(self):
         paths = []
         normals = []
         depths = []
-        #############################
-        
-        q = multiprocessing.Queue()
-        for i in range(self.Clad_Params.LAYERS):
-            # p = multiprocessing.Process(target=self.path_loop, args=(i,q,))
-            # p.start()
-
-            #FIXME: single process debug
-            output = self.path_loop(i,q,)
-            paths.append(output[0])
-            normals.append(output[1])
-            depths.append(output[2])
-            ###############################
-
-        # # Store output from multiprocessing queue
-        # paths = []
-        # normals = []
-        # depths = []
-        # for i in range(self.Clad_Params.LAYERS):
-        #     # Returns output or blocks until ready
-        #     output = q.get()
-        #     # Append each type of output
-        #     paths.append(output[0])
-        #     normals.append(output[1])
-        #     depths.append(output[2])
+        # Call subprocesses for each layer
+        for layer in range(self.Clad_Params.LAYERS):
+            layer_paths = self.get_paths(layer)
+            normal = self.get_normals(layer, layer_paths)
+            layer_paths, normal, layer_depth = self.process_paths_normals(layer, layer_paths, normal)
+     
+            paths.append(layer_paths)
+            normals.append(normal)
+            depths.append(layer_depth)
 
         # update object
         self.Paths = paths
         self.Normals = normals
         self.Depths = depths
 
-    def path_loop(self, layer, queue):
+    def get_paths(self, layer):
         # tolerance used to identifying identical vertices
         tol = 1.49011611938477e-08 #eps(1e8)
         threshold = 3     # minimum clad path length (3 mm)
-
-        clippers = self.Clippers
 
         # preallocating
         layer_paths = MultiCell()
@@ -242,7 +219,7 @@ class WearPath():
         verts = self.Meshes.reconstructed_vertices[layer]
         faces = self.Meshes.reconstructed_faces[layer]
 
-        layer_clippers = clippers[layer]
+        layer_clippers = self.Clippers[layer]
 
         cr = 1
         for c in range(len(layer_clippers)):
@@ -331,7 +308,7 @@ class WearPath():
                 d = self.diff(grouped_path[g])
                 if self.path_length(d) >= threshold:
                     # removing mid points (connection points)
-                    x = np.append(grouped_path[g][0::2], [grouped_path[g][-1]], axis=0)
+                    x = np.append(grouped_path[g][0:len(grouped_path[g])-1:2], [grouped_path[g][-1]], axis=0)
                     # if x.shape[1] != 3:
                     #     continue
                     layer_paths.set(x, cr, cr2)
@@ -341,36 +318,29 @@ class WearPath():
             # if there are paths after checking the length of path
             if flag:
                 cr += 1 
+        return layer_paths
 
+    def get_normals(self, layer, layer_paths):
         ### normals generation:
-        # first clipper normal in each layer:
-        cladVertor = clippers[layer][0].normal
-
         sz = len(layer_paths)
         normal = MultiCell()
-        midp = MultiCell()
-
         for nPaths in range(sz):
             for q in range(layer_paths.len_subset(nPaths)):
                 lp = layer_paths.get(nPaths,q)
                 if lp is None:
                     continue
-                # if lp.shape[1] != 3:
-                #     continue
+                
                 d = self.diff(lp)
                 vn = d / np.linalg.norm(d)
-                cross = np.cross(vn, cladVertor)
+                cross = np.cross(vn, self.Clippers[layer][0].normal)
 
                 # make sure it is pointing upwards in the build direction
                 np.abs(cross[:,2], out=cross[:,2])
                 normal.set(cross, nPaths, q)
 
-                # get midpoint
-                points = np.zeros((len(lp)-1, 3))
-                for i in range(len(lp)-1):
-                    points[i] = np.mean(lp[i:i+2], axis=0)
-                midp.set(points, nPaths, q)
+        return normal
         
+    def process_paths_normals(self, layer, layer_paths, normal):
         # processing points and normals
         top_plane = self.Meshes.reconstructed_BoundingBoxes[layer].get_plane("top")
         layer_depth = MultiCell()
@@ -396,7 +366,6 @@ class WearPath():
                     layer_paths.set(p, i, q)
                     normal.set(one_path_normals[N_indes], i, q)
             
-
                 # computing depth of points
                 point = layer_paths.get(i,q)
                 jsize = len(point)
@@ -406,101 +375,4 @@ class WearPath():
         
                 layer_depth.set(path_depths, i, q)
 
-
-        output = [layer_paths, normal, layer_depth]
-        # queue.put(output)
-
-        #FIXME: single process debug
-        return output
-
-#     methods(Access = public)
-
-#         function self = transform(self, to_system)
-#             #transform Summary of self method goes here
-#             #   Detailed explanation goes here
-
-#             if ~strcmpi(self.System, to_system) && any(strcmpi({'global', 'local'}, to_system))
-#                 paths = self.Paths
-#                 transf = self.Transformation
-#                 for group = 1:size(paths,1)
-#                     for path  = 1:size(paths{group,1},1)
-#                         points = paths{group,1}{path,1}(:,:)
-#                         tf_points = transf.transformPointsForward(points{1,1})
-#                         paths{group,1}{path,1} = tf_points
-                    
-                
-#                 # update points and center
-#                 self.System = to_system
-#                 self.Transformation.Translation = -1 * self.Transformation.Translation        # flipping translation
-#                 self.Paths = paths
-#             else
-#                 warning("System is already in #d", to_system)
-            
-
-#         function self = convert(self, to_coord)
-#             #convert Summary of self method goes here
-#             #   Detailed explanation goes here
-
-#             #:param to: 'none', 'cart', 'cyl', 'sphe'
-
-#             # convert from current system to the targeted system
-#             paths = self.Paths
-#             for group = 1:size(paths,1)
-#                 for path  = 1:size(paths{group,1},1)
-#                     points = paths{group,1}{path,1}(:,:)
-#                     new_points = coordSystems.convert(points, coordSystems.(self.Coordinate), coordSystems.(to_coord))
-#                     paths{group,1}{path,1} = new_points
-                
-            
-#             self.Transformation.Translation = coordSystems.convert(self.Transformation.Translation, coordSystems.(self.Coordinate), coordSystems.(to_coord))
-
-#             # update center and coordinate
-#             self.Coordinate = to_coord
-#             self.Paths = paths
-        
-
-#         function [out1, out2, out3] = export(self, to_system, to_coord)
-#             # Example: Paths.export('local', 'cart')
-#             # check if system is different
-#             if ~matches(self.System, to_system)
-#                 temp = transform(self, to_system)
-#                 # check if coordinate is different
-#                 if ~matches(self.Coordinate, to_coord)
-#                     temp = convert(temp, to_coord)
-#                     out1 = temp.Paths
-#                 else
-#                     out1 = temp.Paths
-                
-#             else
-#                 if ~matches(self.Coordinate, to_coord)
-#                     temp = convert(self, to_coord)
-#                     out1 = temp.Paths
-#                 else
-#                     out1 = self.Paths
-
-#             out2 = self.Depths
-#             out3 = self.Normals
-
-if __name__ == "__main__":
-    # p = np.array([
-    #     [4.14198101220914,	42.1175013950893,	-2.26053702886203],
-    #     [4.16299979917466,	42.1175013950893,	-2.26200835758027],
-    #     [4.16299979917466,	42.1175013950893,	-2.26200835758027],
-    #     [4.20503794582468,	42.1175013950893,	-2.26053702886203],
-    # ])
-    
-    # d = WearPath.diff(None, p)
-    # length = sum(np.sqrt(np.sum(d**2,axis=1)))
-    # print(length)
-
-    # m = np.array([
-    #     [4.74561799284544,	42.1175013950893,	-2.26053702886203],
-    #     [8.16299979917466,	42.1175013950893,	-2.38014487063247],
-    #     [8.47532796933506,	42.1175013950893,	-2.38014487063247],
-    #     [10.1840188724997,	42.1175013950893,	-2.26053702886203]
-    # ])
-    # points = np.zeros((len(m)-1, 3))
-    # for i in range(len(m)-1):
-    #     points[i] = np.mean(m[i:i+2], axis=0)
-    # print(points)
-    pass
+        return layer_paths, normal, layer_depth

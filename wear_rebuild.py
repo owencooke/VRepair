@@ -1,7 +1,6 @@
 import numpy as np
 import open3d as o3d
 import matplotlib.pyplot as plt
-import matplotlib.quiver
 
 from rigid3d import RigidTransform
 from wear_ptcd import WearPointCloud
@@ -98,12 +97,19 @@ class WearRebuild():
         # print(['Paths are exported as: ', new_name])
         pass
 
-    '''MATPLOTLIB GRAPHS'''
-    # point cloud display
+    '''DISPLAY FUNCTIONS (MATPLOTLIB/OPEN3D)'''
     def display_pcd(self):
-        o3d.visualization.draw_geometries([self.Point_Cloud.pcd])
+        # Using Open3D
+        # o3d.visualization.draw_geometries([self.Point_Cloud.pcd])
 
-    # raw mesh display
+        # Using matplotlib
+        fig = plt.figure(figsize=plt.figaspect(0.5))
+        ax = fig.add_subplot(1, 1, 1, projection='3d')
+        # Plot data
+        vertices = np.asarray(self.Point_Cloud.pcd.points)
+        ax.scatter(vertices[:,0], vertices[:,1], vertices[:,2])
+        plt.show()
+
     def display_raw_mesh(self):
         # Using Open3D 
         # o3d.visualization.draw([self.Meshes.raw_mesh])
@@ -117,8 +123,6 @@ class WearRebuild():
         ax.plot_trisurf(vertices[:,0], vertices[:,1], vertices[:,2], triangles=triangles, cmap=plt.cm.Spectral)
         plt.show()
 
-
-    # reconstructed meshes display
     def display_reconst_meshes(self):
         # using matplotlib
         fig = plt.figure(figsize=plt.figaspect(0.5))

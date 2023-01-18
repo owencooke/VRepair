@@ -10,18 +10,19 @@ from multicell import MultiCell
 from interparc import interpcurve
 
 class WearPath():
-    # def __init__(self, meshes_obj, clad_params):
-    #     self.Meshes = meshes_obj
-    #     self.Transformation = meshes_obj.Transformation
-    #     self.System = meshes_obj.System
-    #     self.Coordinate = meshes_obj.Coordinate
-    #     self.Clad_Params = clad_params
+    def __init__(self, meshes_obj=None, clad_params=None, debug=False):
+        if not debug:
+            self.Meshes = meshes_obj
+            self.Transformation = meshes_obj.Transformation
+            self.System = meshes_obj.System
+            self.Coordinate = meshes_obj.Coordinate
+            self.Clad_Params = clad_params
 
-    #     # clippers generation
-    #     self.generate_clippers()
+            # clippers generation
+            self.generate_clippers()
 
-    #     # processing paths generation
-    #     self.generate_paths_and_normals()
+            # processing paths generation
+            self.generate_paths_and_normals()
 
     def generate_clippers(self):
         # init vars
@@ -211,7 +212,8 @@ class WearPath():
 
     def get_paths(self, layer, debug=False, layer_clippers=None, verts=None, faces=None):
         # tolerance used to identifying identical vertices
-        tol = 1.49011611938477e-08 #eps(1e8)
+        # tol = 1.49011611938477e-08 #eps(1e8)
+        tol = np.finfo(np.float32).eps
         threshold = 3     # minimum clad path length (3 mm)
 
         # preallocating
@@ -305,7 +307,8 @@ class WearPath():
             flag = False
             for g in range(len(grouped_path)):
                 d = self.diff(grouped_path[g])
-                if self.path_length(d) >= threshold:
+                length = self.path_length(d)
+                if length >= threshold:
                     # removing mid points (connection points)
                     x = np.append(grouped_path[g][0:len(grouped_path[g])-1:2], [grouped_path[g][-1]], axis=0)
                     # if x.shape[1] != 3:
@@ -326,8 +329,8 @@ class WearPath():
         for nPaths in range(sz):
             for q in range(layer_paths.len_subset(nPaths)):
                 lp = layer_paths.get(nPaths,q)
-                if lp is None:
-                    continue
+                # if lp is None:
+                #     continue
                 
                 d = self.diff(lp)
                 vn = d / np.linalg.norm(d)
@@ -376,8 +379,10 @@ class WearPath():
 
         return layer_paths, normal, layer_depth
 
-#DEBUG
-if __name__ == "__main__":
+######################################################################################
+
+#DEBUGGING FUNCTIONS
+def debug_get_paths():
     # Get clipper planes from MATLAB debug output 
     layer_clippers = []
     planes = np.loadtxt('unit_tests/get_paths/clippers.txt', dtype=np.float32, delimiter='\t')
@@ -391,6 +396,43 @@ if __name__ == "__main__":
     # Debug get_paths()
     layer = 1
     debug = True
-    wp = WearPath()
+    wp = WearPath(debug=True)
     layer_paths = wp.get_paths(layer, debug, layer_clippers, verts, faces)
     print(layer_paths)
+
+def debug_ismembertol():
+    # init
+    wp = WearPath(debug=True)
+    grouped_path = []
+    # tol = 1.49011611938477e-08
+    tol = np.finfo(np.float32).eps
+
+    # load test from MATLAB
+    path = np.loadtxt('unit_tests/ismembertol/path.txt', dtype=np.float32, delimiter='\t')
+    rel_tol = tol*np.max(np.abs(path))
+
+    # search for separation points in paths and group the connected paths
+    s_p = 0 # starting point of new group
+    for row in range(len(path)):
+        inds = wp.ismembertol(path, path[row], rel_tol)
+
+        if sum(inds) == 1 and s_p != row:
+            grouped_path.append(path[s_p:row+1])  # grouping connected paths
+            s_p = row+1
+        elif row == len(path)-1 and not grouped_path:
+            temp = path[1:-1] # points w/o first and final
+            inds1 = wp.ismembertol(temp, path[0], rel_tol) # first point
+            inds2 = wp.ismembertol(temp, path[-1],rel_tol) # last point
+            if sum(inds1) == 0:
+                temp = np.append(temp, path[0], axis=0)
+        
+            if sum(inds2) == 0:
+                temp = np.append(temp, path[-1], axis=0)
+        
+            grouped_path.append(temp) # grouping connected paths
+
+    print(grouped_path)
+
+if __name__ == "__main__":
+    debug_get_paths()
+    # debug_ismembertol()

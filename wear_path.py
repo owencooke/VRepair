@@ -2,6 +2,7 @@ import numpy as np
 from math import radians, ceil, floor
 from skspatial.objects import Plane, Line
 import multiprocessing
+import csv
 
 from rigid3d import rotation_around_z
 from plane import BoundingBox
@@ -9,18 +10,18 @@ from multicell import MultiCell
 from interparc import interpcurve
 
 class WearPath():
-    def __init__(self, meshes_obj, clad_params):
-        self.Meshes = meshes_obj
-        self.Transformation = meshes_obj.Transformation
-        self.System = meshes_obj.System
-        self.Coordinate = meshes_obj.Coordinate
-        self.Clad_Params = clad_params
+    # def __init__(self, meshes_obj, clad_params):
+    #     self.Meshes = meshes_obj
+    #     self.Transformation = meshes_obj.Transformation
+    #     self.System = meshes_obj.System
+    #     self.Coordinate = meshes_obj.Coordinate
+    #     self.Clad_Params = clad_params
 
-        # clippers generation
-        self.generate_clippers()
+    #     # clippers generation
+    #     self.generate_clippers()
 
-        # processing paths generation
-        self.generate_paths_and_normals()
+    #     # processing paths generation
+    #     self.generate_paths_and_normals()
 
     def generate_clippers(self):
         # init vars
@@ -208,7 +209,7 @@ class WearPath():
         self.Normals = normals
         self.Depths = depths
 
-    def get_paths(self, layer):
+    def get_paths(self, layer, debug=False, layer_clippers=None, verts=None, faces=None):
         # tolerance used to identifying identical vertices
         tol = 1.49011611938477e-08 #eps(1e8)
         threshold = 3     # minimum clad path length (3 mm)
@@ -216,12 +217,12 @@ class WearPath():
         # preallocating
         layer_paths = MultiCell()
 
-        verts = self.Meshes.reconstructed_vertices[layer]
-        faces = self.Meshes.reconstructed_faces[layer]
+        if not debug:
+            verts = self.Meshes.reconstructed_vertices[layer]
+            faces = self.Meshes.reconstructed_faces[layer]
+            layer_clippers = self.Clippers[layer]
 
-        layer_clippers = self.Clippers[layer]
-
-        cr = 1
+        cr = 0
         for c in range(len(layer_clippers)):
             # Get plane clipper
             clipper = layer_clippers[c]
@@ -253,17 +254,17 @@ class WearPath():
             if not path.size:
                 continue
     
-            # arrange clipped points
-            path.sort(axis=0)
+            # sort acscending by first column (x)
+            ind = np.lexsort((path[:,2],path[:,1],path[:,0])) 
+            path = path[ind]
 
-            # clean up paths in case of defected mesh
-            path = path[~np.isnan(path).any(axis=1)]       # removing any NAN rows
-            uniq_inds = np.full(len(path), True)
-            iter = np.full(len(path), False)         # keep track of rows
+            # removing any NAN rows in case of defected mesh
+            path = path[~np.isnan(path).any(axis=1)]
 
-            # Compute relative tolerance
+            # Compute relative tolerance for removing duplicate points
             rel_tol = tol*np.max(np.abs(path))
-
+            uniq_inds = np.full(len(path), True)
+            iter = np.full(len(path), False)
             for row in range(len(path)):
                 # skip if points already checked before
                 if ~iter[row]:
@@ -280,14 +281,13 @@ class WearPath():
             path = path[uniq_inds]
 
             # search for separation points in paths and group the connected paths
-            k = 1   # number of disconnected paths
-            s_p = 1 # starting point of new group
-            for row in range(len(path)): #2:size(path,1)
+            s_p = 0 # starting point of new group
+            for row in range(len(path)):
                 inds = self.ismembertol(path, path[row], rel_tol)
+
                 if sum(inds) == 1 and s_p != row:
-                    grouped_path.append(path[s_p:row])  # grouping connected paths
+                    grouped_path.append(path[s_p:row+1])  # grouping connected paths
                     s_p = row+1
-                    k += 1
                 elif row == len(path)-1 and not grouped_path:
                     temp = path[1:-1] # points w/o first and final
                     inds1 = self.ismembertol(temp, path[0], rel_tol) # first point
@@ -299,10 +299,9 @@ class WearPath():
                         temp = np.append(temp, path[-1], axis=0)
                 
                     grouped_path.append(temp) # grouping connected paths
-                    k += 1
             
             # remove path if it less than threshold:
-            cr2 = 1
+            cr2 = 0
             flag = False
             for g in range(len(grouped_path)):
                 d = self.diff(grouped_path[g])
@@ -376,3 +375,22 @@ class WearPath():
                 layer_depth.set(path_depths, i, q)
 
         return layer_paths, normal, layer_depth
+
+#DEBUG
+if __name__ == "__main__":
+    # Get clipper planes from MATLAB debug output 
+    layer_clippers = []
+    planes = np.loadtxt('unit_tests/get_paths/clippers.txt', dtype=np.float32, delimiter='\t')
+    for row in planes:
+        plane = Plane.from_vectors(row[:3], row[3:6], row[6:])
+        layer_clippers.append(plane)
+
+    verts = np.loadtxt('unit_tests/get_paths/verts.txt', dtype=np.float32, delimiter='\t')
+    faces = np.loadtxt('unit_tests/get_paths/faces.txt', dtype=np.int32, delimiter='\t') - 1
+
+    # Debug get_paths()
+    layer = 1
+    debug = True
+    wp = WearPath()
+    layer_paths = wp.get_paths(layer, debug, layer_clippers, verts, faces)
+    print(layer_paths)

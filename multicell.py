@@ -1,5 +1,6 @@
 class MultiCell():
-    d = {}
+    def __init__(self):
+        self.d = {}
 
     def __len__(self):
         return len(self.d)

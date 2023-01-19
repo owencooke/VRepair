@@ -2,32 +2,17 @@ import numpy as np
 import open3d as o3d
 import matplotlib.pyplot as plt
 
-from rigid3d import RigidTransform
 from wear_ptcd import WearPointCloud
 from wear_mesh import WearMesh
 from wear_path import WearPath
 
-'''class:`wear_rebuild` is a program for generating toolpaths for the
-repairing process of a wear using metal deposition modeling process. '''
+'''
+A program for generating toolpaths for the repairing process of 
+a wear using metal deposition modeling process.
+'''
 class WearRebuild(): 
-    # parameters with default values
-    Transformation = RigidTransform()    # Model transformation matrix.
-    # Coordinate = Coords.CYL              # Model coordinate System ('cart', 'cyl', 'sphe').
     System = 'global'           # Model working system ('global', 'local').
-    MeshMethod = 'delaunay'          # Model meshing method (delauny, crust).
-    RefinementFactor = 1             # Mesh refinement factor
 
-    NEW_FIGURE = True            # display each data in a new window.
-    MULTIPLE_FIGURES = True      # display data of muliple layers in multiple figures.
-    SHOW_PCD = True              # display point cloud.
-    SHOW_MESH = True             # display mesh.
-    SHOW_PLANES = True           # display boudning planes.
-    SHOW_SLICES = True           # display slices
-    NORMALS_SWITCH = True        # display normals
-    NORMALS_SCALE = 0.03         # normals scale
-    PLOTS_STYLE = 'normal'       # 'normal', 'equal'
-
-     # CONSTRUCTOR 
     def __init__(self, filename, clad_params, mesh_method,
                 refinement_factor, point_cloud_coordinate):
             
@@ -47,7 +32,7 @@ class WearRebuild():
         self.System = self.Point_Cloud.System    # update model system depends on point cloud system
 
         # 2- meshes object construction
-        self.Meshes = WearMesh(self.Point_Cloud, self.MeshMethod, self.RefinementFactor, self.Clad_Params) 
+        self.Meshes = WearMesh(self.Point_Cloud, self.Clad_Params) 
         self.Clad_Params = self.Meshes.Clad_Params   # update clad_params
 
         # # 3- paths object constuction

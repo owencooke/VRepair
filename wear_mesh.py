@@ -1,53 +1,28 @@
 from math import ceil, floor
-import sys
 from scipy.spatial import Delaunay
 import open3d as o3d
 import numpy as np
-from plane import BoundingBox, Plane
+
+from plane import BoundingBox
 
 class WearMesh():
-    RefinementFactor = 1
-
-    def __init__(self, point_cloud_object, method, refinement_factor, clad_params):
-        #:param point_cloud: wear point cloud object
-        #:param method: algorithm for meshing ('delaunay', 'crust')
-        #:param coordinate: coordinate system (none, cart, cyl, sphe)
-        #:param system: global or local
-        #:param refinement_factor: number of raw mesh subdivisions
+    def __init__(self, point_cloud_object, clad_params):
         self.Center = point_cloud_object.center 
         self.Transformation = point_cloud_object.Transformation 
-        self.MeshingMethod = method 
         self.System = point_cloud_object.System 
         self.Coordinate = point_cloud_object.Coordinate 
-        self.RefinementFactor = refinement_factor 
         self.Clad_Params = clad_params 
 
-        # wear point cloud to mesh ( raw mesh )
+        # Create raw mesh from pointcloud using Delaunay method
         points = np.asarray(point_cloud_object.points, dtype=np.float32)
-        if method == 'delaunay':
-            self.Delaunay = Delaunay(points[:,:2])   # meshing using MATLAB built-in function
-            self.raw_vertices = points
-            self.raw_BoundingBox = BoundingBox(points)
 
-            # Create mesh
-            # self.raw_mesh = o3d.geometry.TriangleMesh(
-            #     o3d.utility.Vector3dVector(points),
-            #     o3d.utility.Vector3iVector(self.Delaunay.simplices),
-            # )
-            self.raw_mesh = o3d.t.geometry.TriangleMesh(
-                o3d.core.Tensor(points),
-                o3d.core.Tensor(np.int64(self.Delaunay.simplices)),
-            )
-            # o3d.visualization.draw([self.raw_mesh])
+        self.Delaunay = Delaunay(points[:,:2])
+        self.raw_vertices = points
+        self.raw_BoundingBox = BoundingBox(points)
 
-        #NOTE: add crust implementation if needed
-            # case 'crust'
-            #     [~, F] = evalc('MyCrustOpen(points)')      # meshing using the Open Crust library.
-            #     self.Meshes.raw_mesh.faces = F 
-            #     self.Meshes.raw_mesh.vertices = points 
-            #     self.Meshes.raw_mesh.BoundingBox = Box(boundingBox3d(points)) 
-        else:
-            sys.exit('Triangulation algorithm not implemented. Check function description.')
+        # Create mesh object
+        self.raw_mesh = o3d.t.geometry.TriangleMesh(o3d.core.Tensor(points),
+                            o3d.core.Tensor(np.int64(self.Delaunay.simplices)))
 
         # # mesh refinement (not implemented)
         # self.refinement(refinement_factor) 
@@ -169,9 +144,9 @@ class WearMesh():
                 o3d.utility.Vector3iVector(lower_tri),
             )
 
-            # merge projected mesh and remaining mesh from slicer (upper mesh):
-            # new mesh above the plane of first layer
-            # NOTE: can only combine legacy o3d Triangle meshes
+            # merge projected mesh and remaining mesh from slicer (upper mesh)
+            # into new mesh above the plane of first layer
+            # NOTE: can only combine legacy o3d Triangle meshes, not o3d.t
             mesh = proj_mesh + upper.to_legacy()
             mesh = o3d.t.geometry.TriangleMesh.from_legacy(mesh)
 
@@ -187,7 +162,7 @@ class WearMesh():
             proj[idx] = plane.project_point(v)
         return proj
 
-    #NOTE: must implement if subdividing mesh into more triangles is needed
+    #NOTE: if subdividing mesh into more triangles is needed
     # See http://www.open3d.org/docs/release/tutorial/geometry/mesh.html#Mesh-subdivision
     # for open3D subdivide implementations
     #def refinement(self, refinement_factor):

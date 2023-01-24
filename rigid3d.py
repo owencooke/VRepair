@@ -50,6 +50,13 @@ class RigidTransform():
         self.mat = np.linalg.inv(self.mat)
         return self.mat
 
+    def applyToPoints(self, points):
+        for i in range(len(points)):
+            # Transform point
+            pt = np.append(points[i], 1)
+            points[i] = self.mat.dot(pt)[:3]
+        return points
+
 if __name__ == "__main__":
     x = RigidTransform()
     print(x.mat[:3,3])

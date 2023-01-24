@@ -8,6 +8,7 @@ from rigid3d import rotation_around_z
 from plane import BoundingBox
 from multicell import MultiCell
 from interparc import interpcurve
+from coord_systems import convert_coords
 
 class WearPath():
     def __init__(self, meshes_obj=None, clad_params=None, debug=False):
@@ -311,8 +312,6 @@ class WearPath():
                 if length >= threshold:
                     # removing mid points (connection points)
                     x = np.append(grouped_path[g][0:len(grouped_path[g])-1:2], [grouped_path[g][-1]], axis=0)
-                    # if x.shape[1] != 3:
-                    #     continue
                     layer_paths.set(x, cr, cr2)
                     cr2 += 1
                     flag = True
@@ -379,6 +378,54 @@ class WearPath():
 
         return layer_paths, normal, layer_depth
 
+    # Export path variables to specified sys/coords
+    def export(self, to_system, to_coord):
+        if self.System != to_system:
+            self.transform(to_system)
+
+        if self.Coordinate != to_coord:
+            self.convert(to_coord)
+        #FIXME: doesn't change depths/normal coords for some reason?
+        return self.Paths, self.Depths, self.Normals
+
+    def transform(self, to_system):
+        if self.System != to_system and self.System in ['global', 'local']:
+            paths = self.Paths
+            for l in range(len(paths)):
+                for g in range(len(paths[l])):
+                    for p in range(paths[l].len_subset(g)):
+                        # Apply transform to path points
+                        points = paths[l].get(g,p)
+                        tf_points = self.Transformation.applyToPoints(points)
+                        paths[l].set(tf_points, g, p)
+
+            # update points and center
+            self.System = to_system
+            self.Transformation.flip()
+            self.Paths = paths
+        else:
+            print("System is already in", to_system)
+
+    def convert(self, to_coord):
+        # to_coord: 'none', 'cart', 'cyl', 'sphe'
+        # convert from current system to the targeted system
+        paths = self.Paths
+        for l in range(len(paths)):
+            for g in range(len(paths[l])):
+                for p in range(paths[l].len_subset(g)):
+                        # Apply transform to path points
+                        points = paths[l].get(g,p)
+                        points = convert_coords(points, self.Coordinate, to_coord) 
+                        paths[l].set(points, g, p)
+        
+        # Convert translation coords
+        trans = self.Transformation.getTranslation()
+        self.Transformation.setTranslation(convert_coords(trans, self.Coordinate, to_coord))
+
+        # update center and coordinate
+        self.Coordinate = to_coord
+        self.Paths = paths
+    
 ######################################################################################
 
 #DEBUGGING FUNCTIONS

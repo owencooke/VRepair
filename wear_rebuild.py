@@ -1,3 +1,4 @@
+import csv
 import numpy as np
 import open3d as o3d
 import matplotlib.pyplot as plt
@@ -58,29 +59,43 @@ class WearRebuild():
         #         print('Mesh is exported as: ', new_name)
         pass
  
-    # export paths
+    # export paths to CSV
     def paths_export(self, to_system, to_coordinate):
-        # output is arranged as follows
+        # CSV output is arranged as follows
         # [layer, (starting_point, intermediate_point, end_point) , point depth, processing point, point normal]
-        # depth is distance from point to top plane of bounding box.
+        # depth is the distance from point to top plane of bounding box.
+        out = "test_output.csv"
 
-        # conversion system goes here:
-        # [paths, depths, normals] = self.Paths.export(to_system, to_coordinate) 
+        # get path values according to system/coord type
+        paths, depths, normals = self.Paths.export(to_system, to_coordinate)
 
-        # DataOut = [] 
-        # for layer = 1 : size(paths,1)
-        #     for path = 1 : size(paths{layer,1},1)
-        #             #for q = 1: size(paths{layer,1}{path,1},1)
-        #         sz = size(paths{layer,1}{path,1}[:,1],1) 
-        #         if sz >= 2   # if there are more than two points ( because path can not be less than two points )
-        #             code = repmat(2,sz,1)  code(1) = 0  code(end) = 1 
-        #             DataOut = [DataOut  repmat(layer,sz,1), code, depths{layer,1}{path,1}{1,1}(:), paths{layer,1}{path,1}(:,:), normals{layer,1}{path,1}{1,1}(:,:)] 
-        # new_name = convertStringsToChars( erase(pwd,'src') + "output\" + erase(self.FILENAME, {'data/','.pcd'}) + "_" + erase(to_coordinate , '') +".csv" ) 
-        # varNames  = {'layer_number', 'point_code','point_depth', 'X','Y','Z','Nx','Ny','Nz'} 
-        # T = array2table(DataOut, 'VariableNames', varNames) 
-        # writetable(T, new_name)
-        # print(['Paths are exported as: ', new_name])
-        pass
+        # Create CSV output file
+        header = ['layer_number', 'point_code','point_depth', 'X','Y','Z','Nx','Ny','Nz']
+        with open(out, 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(header)
+
+            for layer in range(len(paths)):
+                for g in range(len(paths[layer])):
+                    for p in range(paths[layer].len_subset(g)):
+                        points = paths[layer].get(g,p)
+                        depth = depths[layer].get(g,p)
+                        normal = normals[layer].get(g,p)
+                        # path should not be less than two points
+                        if points.shape[0] >= 2:
+                            # Format info and write to CSV row
+                            for i in range(len(points)):
+                                # Set point code
+                                if i == 0:
+                                    code = 0
+                                elif i == len(points) - 1:
+                                    code = 1
+                                else:
+                                    code = 2
+                                row = np.concatenate(([layer], [code], depth[i], points[i], normal[i]))
+                                writer.writerow(list(row))
+
+        print('Paths are exported as:', out)
 
     '''DISPLAY FUNCTIONS (MATPLOTLIB/OPEN3D)'''
     def display_pcd(self):
@@ -139,6 +154,7 @@ class WearRebuild():
                     ax.plot3D(p[:,0], p[:,1], p[:,2], color=color)
                     
                     # plot normal arrow at each point in opposite color
+                    #FIXME: NEED TO FIND THE MISSING NORMAL VECTOR
                     n = self.Paths.Normals[i].get(j,q)
                     ax.quiver3D(p[:-1,0], p[:-1,1], p[:-1,2],
                                     n[:,0], n[:,1], n[:,2],

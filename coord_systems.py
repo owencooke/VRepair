@@ -11,7 +11,7 @@ def convert_coords(points, init, final):
     if init == final:
         return points
 
-    if init == Coords.Cart:
+    if init == Coords.CART:
         if final == Coords.CYL:
             points = cart_to_cyl(points)
         # elif final == Coords.SPH:

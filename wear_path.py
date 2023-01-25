@@ -270,8 +270,8 @@ class WearPath():
             path = path[~np.isnan(path).any(axis=1)]
 
             # Remove duplicate points
-            # tol = 1.49011611938477e-08 #eps(1e8)
-            tol = np.finfo(np.float32).eps
+            tol = 1.49011611938477e-08 #eps(1e8)
+            # tol = np.finfo(np.float32).eps
             rel_tol = tol*np.max(np.abs(path))
             path = self.remove_duplicate_points(path, rel_tol)
 
@@ -499,7 +499,33 @@ def debug_process_paths_normals(laser):
 
     print("Layers\n", layer_paths.get(i,q), '\n', '\n', "Normals\n", normal.get(i,q))
 
+def test_export():
+    from rigid3d import RigidTransform
+    from coord_systems import Coords
+    points = np.loadtxt('unit_tests/export_paths/init_path.txt', dtype=np.float32, delimiter='\t')
+    # t = np.loadtxt('unit_tests/export_paths/transform.txt', dtype=np.float32, delimiter='\t')
+
+    # load tests
+    transformed = np.loadtxt('unit_tests/export_paths/after_transform.txt', dtype=np.float32, delimiter='\t')
+    converted = np.loadtxt('unit_tests/export_paths/after_coord.txt', dtype=np.float32, delimiter='\t')
+
+    # Test transform
+    t = RigidTransform(trans=np.array([181.310999224263, 617.911856515067, 63.4038704639206]))
+    tf_points = t.applyToPoints(points)
+    assert(np.array_equal(tf_points,transformed))
+    # print(tf_points)
+    # print()
+    # print(transformed)
+
+    # test coord convert
+    c_points = convert_coords(tf_points, Coords.CYL, Coords.CART) 
+    # assert(np.array_equal(c_points,converted))
+    print(c_points)
+    print()
+    print(converted)
+
 if __name__ == "__main__":
     # debug_get_paths()
     # debug_ismembertol()
-    debug_process_paths_normals(3)
+    # debug_process_paths_normals(3)
+    test_export()

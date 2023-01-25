@@ -10,11 +10,15 @@ def rotation_around_z(angle):
                 (sin,	cos,	0),
                 (0,	    0,  	1)
             ), dtype=np.float64)
-    return RigidTransform(rot)
+    return RigidTransform(rot=rot)
 
 class RigidTransform():
-    def __init__(self, rot=None, trans=None):
-        self.mat = np.array((
+    def __init__(self, mat=None, rot=None, trans=None):
+        # Init matrix
+        if type(mat) is np.ndarray:
+            self.mat = mat
+        else:
+            self.mat = np.array((
                     (1,	0,	0,	0),
                     (0,	1,	0,	0),
                     (0,	0,	1,	0),

@@ -2,7 +2,6 @@ import numpy as np
 from math import radians, ceil, floor
 from skspatial.objects import Plane, Line
 import multiprocessing
-import csv
 
 from rigid3d import rotation_around_z
 from plane import BoundingBox
@@ -191,6 +190,24 @@ class WearPath():
     def path_length(self, points):
         return sum(np.sqrt(np.sum(points**2,axis=1)))
 
+    def remove_duplicate_points(self, path, tol):
+        uniq_inds = np.full(len(path), True)
+        iter = np.full(len(path), False)
+        for row in range(len(path)):
+            # skip if points already checked before
+            if ~iter[row]:
+                # compare each point to others
+                inds = self.ismembertol(path, path[row], tol)
+                if sum(inds) > 2:
+                    # classify 3rd+ occurences as non-unique points
+                    temp = np.where(inds == 1)[0]
+                    uniq_inds[temp[2:]] = False
+                    iter[inds] = True
+                else:
+                    iter[inds] = True
+
+        return path[uniq_inds]
+
     # tool paths generation
     def generate_paths_and_normals(self):
         paths = []
@@ -212,12 +229,6 @@ class WearPath():
         self.Depths = depths
 
     def get_paths(self, layer, debug=False, layer_clippers=None, verts=None, faces=None):
-        # tolerance used to identifying identical vertices
-        # tol = 1.49011611938477e-08 #eps(1e8)
-        tol = np.finfo(np.float32).eps
-        threshold = 3     # minimum clad path length (3 mm)
-
-        # preallocating
         layer_paths = MultiCell()
 
         if not debug:
@@ -227,61 +238,42 @@ class WearPath():
 
         cr = 0
         for c in range(len(layer_clippers)):
-            # Get plane clipper
+            # determine position of each vertex relative to plane clipper
             clipper = layer_clippers[c]
-            
-            # determine position of each veritix relative to plane
             vo = self.below_plane(verts, clipper)
 
             # no intersection occurs if points ALL above or ALL below
             if np.all(vo == -1) or np.all(vo == 1):
                 continue
 
-            # otherwise handle intersection
+            # handle intersection
             path = np.empty((0,3))
             grouped_path = []
-
-            # iterating over faces
             for f in range(len(faces)):
-                fac = faces[f]      # faces indices
-                vof = vo[fac]         # vertices location
-
+                fac = faces[f]
+                vof = vo[fac]
                 # processing the faces that intersect with the plane only
                 if sum(vof) == 0:
-                    continue        # no intersection with self face
-                
-                # adding clipped edge to paths
+                    continue
+                # add clipped edge to paths
                 path = np.append(path, self.slice_face(verts[fac], vof, clipper), axis=0)
 
-            # checking if no intersection happens, in case of two valleys
+            # check if no intersection, in case of two valleys
             if not path.size:
                 continue
     
-            # sort acscending by first column (x)
+            # sort points acscending by X
             ind = np.lexsort((path[:,2],path[:,1],path[:,0])) 
             path = path[ind]
 
             # removing any NAN rows in case of defected mesh
             path = path[~np.isnan(path).any(axis=1)]
 
-            # Compute relative tolerance for removing duplicate points
+            # Remove duplicate points
+            # tol = 1.49011611938477e-08 #eps(1e8)
+            tol = np.finfo(np.float32).eps
             rel_tol = tol*np.max(np.abs(path))
-            uniq_inds = np.full(len(path), True)
-            iter = np.full(len(path), False)
-            for row in range(len(path)):
-                # skip if points already checked before
-                if ~iter[row]:
-                    # one point at time
-                    inds = self.ismembertol(path, path[row], rel_tol)
-
-                    if sum(inds) > 2:  # if same point occurs more than two times
-                        temp = np.where(inds == 1)[0]
-                        uniq_inds[temp[3:]] = False
-                        iter[inds] = True
-                    else:
-                        iter[inds] = True
-
-            path = path[uniq_inds]
+            path = self.remove_duplicate_points(path, rel_tol)
 
             # search for separation points in paths and group the connected paths
             s_p = 0 # starting point of new group
@@ -304,6 +296,7 @@ class WearPath():
                     grouped_path.append(temp) # grouping connected paths
             
             # remove path if it less than threshold:
+            threshold = 3     # minimum clad path length (3 mm)
             cr2 = 0
             flag = False
             for g in range(len(grouped_path)):
@@ -322,22 +315,20 @@ class WearPath():
         return layer_paths
 
     def get_normals(self, layer, layer_paths):
-        sz = len(layer_paths)
-        normal = MultiCell()
-        for nPaths in range(sz):
+        normals = MultiCell()
+        for nPaths in range(len(layer_paths)):
             for q in range(layer_paths.len_subset(nPaths)):
                 lp = layer_paths.get(nPaths,q)
-                
                 # Calculate normal vectors
                 d = self.diff(lp)
-                vn = d / np.linalg.norm(d, axis=-1, keepdims=True)
-                cross = np.cross(vn, self.Clippers[layer][0].normal)
-
+                norm = np.linalg.norm(d, axis=-1, keepdims=True)
+                # Prevent divide by zero
+                # norm[norm == 0] = 1
+                cross = np.cross(d/norm, self.Clippers[layer][0].normal)
                 # make sure they are pointing upwards in the build direction
                 np.abs(cross[:,2], out=cross[:,2])
-                normal.set(cross, nPaths, q)
-
-        return normal
+                normals.set(cross, nPaths, q)
+        return normals
         
     def process_paths_normals(self, layer, layer_paths, normal):
         # processing points and normals
@@ -363,6 +354,7 @@ class WearPath():
                     layer_paths.set(p, i, q)
                     normal.set(one_path_normals[N_indes], i, q)
                 
+                #FIXME
                 assert(len(layer_paths.get(i,q)) == len(normal.get(i,q)))
             
                 # computing depth of points

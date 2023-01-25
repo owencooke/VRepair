@@ -61,9 +61,6 @@ class WearRebuild():
  
     # export paths to CSV
     def paths_export(self, to_system, to_coordinate):
-        # CSV output is arranged as follows
-        # [layer, (starting_point, intermediate_point, end_point) , point depth, processing point, point normal]
-        # depth is the distance from point to top plane of bounding box.
         out = "test_output.csv"
 
         # get path values according to system/coord type
@@ -79,17 +76,20 @@ class WearRebuild():
                 for g in range(len(paths[layer])):
                     for p in range(paths[layer].len_subset(g)):
                         points = paths[layer].get(g,p)
+                        # depth is the distance from point to top plane of bounding box.
                         depth = depths[layer].get(g,p)
                         normal = normals[layer].get(g,p)
                         # path should not be less than two points
                         if points.shape[0] >= 2:
                             # Format info and write to CSV row
                             for i in range(len(points)):
-                                # Set point code
+                                # start of path
                                 if i == 0:
                                     code = 0
+                                # end of path
                                 elif i == len(points) - 1:
-                                    code = 1
+                                    code = 1 # end of path
+                                # intermediate point
                                 else:
                                     code = 2
                                 row = np.concatenate(([layer], [code], depth[i], points[i], normal[i]))
@@ -154,9 +154,8 @@ class WearRebuild():
                     ax.plot3D(p[:,0], p[:,1], p[:,2], color=color)
                     
                     # plot normal arrow at each point in opposite color
-                    #FIXME: NEED TO FIND THE MISSING NORMAL VECTOR
                     n = self.Paths.Normals[i].get(j,q)
-                    ax.quiver3D(p[:-1,0], p[:-1,1], p[:-1,2],
+                    ax.quiver3D(p[:,0], p[:,1], p[:,2],
                                     n[:,0], n[:,1], n[:,2],
                                     colors=1-color, length=0.3,
                                     normalize=True, linewidths=0.1)

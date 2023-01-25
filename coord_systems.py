@@ -22,15 +22,23 @@ def convert_coords(points, init, final):
     return points
 
 def cyl_to_cart(points):
-    r = points[:,0]
-    theta = points[:,1]
+    if len(points.shape) == 1:
+        # Single point
+        r = points[0]
+        theta = points[1]
+    else:
+        r = points[:,0]
+        theta = points[:,1]
 
     # Calculate x and y arrays
     x = r * np.cos(theta)
     y = r * np.sin(theta)
 
     # Multiply by conversion factors and return
-    return np.column_stack((x, y, points[:,2]))
+    if len(points.shape) == 1:
+        return np.array((x, y, points[2]))
+    else:
+        return np.column_stack((x, y, points[:,2]))
 
 def cart_to_cyl(points):
     x = points[:,0]
@@ -44,8 +52,9 @@ def cart_to_cyl(points):
     return np.column_stack((r, theta, points[:,2]))
 
 if __name__ == "__main__":
-    points = np.array(((3,4,5),(7,8,2),))
-    print(points)
-    n = cart_to_cyl(points)
-    print(n)
-    print(cyl_to_cart(n))
+    # points = np.array(((3,4,5),(7,8,2),))
+    # print(points)
+    # n = cart_to_cyl(points)
+    # print(n)
+    # print(cyl_to_cart(n))
+    cyl_to_cart(np.array((148,20,3)))

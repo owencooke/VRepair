@@ -322,20 +322,18 @@ class WearPath():
         return layer_paths
 
     def get_normals(self, layer, layer_paths):
-        ### normals generation:
         sz = len(layer_paths)
         normal = MultiCell()
         for nPaths in range(sz):
             for q in range(layer_paths.len_subset(nPaths)):
                 lp = layer_paths.get(nPaths,q)
-                # if lp is None:
-                #     continue
                 
+                # Calculate normal vectors
                 d = self.diff(lp)
-                vn = d / np.linalg.norm(d)
+                vn = d / np.linalg.norm(d, axis=-1, keepdims=True)
                 cross = np.cross(vn, self.Clippers[layer][0].normal)
 
-                # make sure it is pointing upwards in the build direction
+                # make sure they are pointing upwards in the build direction
                 np.abs(cross[:,2], out=cross[:,2])
                 normal.set(cross, nPaths, q)
 
@@ -349,8 +347,6 @@ class WearPath():
             for q in range(layer_paths.len_subset(i)):
                 # one path and its normals on one layer
                 one_path = layer_paths.get(i,q)
-                if one_path is None:
-                    continue
                 one_path_normals = normal.get(i,q)
 
                 d = self.diff(one_path)
@@ -362,10 +358,12 @@ class WearPath():
                     # if only one point, take first and end points
                     layer_paths.set(one_path[[0,-1]], i, q)
                     normal.set(one_path_normals[[0,-1]], i, q)
-                # else:
+                else:
                     p, N_indes = interpcurve(nPoints,one_path)
                     layer_paths.set(p, i, q)
                     normal.set(one_path_normals[N_indes], i, q)
+                
+                assert(len(layer_paths.get(i,q)) == len(normal.get(i,q)))
             
                 # computing depth of points
                 point = layer_paths.get(i,q)
@@ -383,8 +381,8 @@ class WearPath():
         if self.System != to_system:
             self.transform(to_system)
 
-        if self.Coordinate != to_coord:
-            self.convert(to_coord)
+        # if self.Coordinate != to_coord:
+        #     self.convert(to_coord)
         #FIXME: doesn't change depths/normal coords for some reason?
         return self.Paths, self.Depths, self.Normals
 
@@ -480,6 +478,36 @@ def debug_ismembertol():
 
     print(grouped_path)
 
+def debug_process_paths_normals(laser):
+    # processing points and normals
+    i = 0
+    q = 0
+    layer_paths = MultiCell()
+    normal = MultiCell()
+
+    one_path = np.loadtxt('unit_tests/process_paths_normals/path.txt', dtype=np.float32, delimiter='\t')
+    one_path_normals = np.loadtxt('unit_tests/process_paths_normals/normals.txt', dtype=np.float32, delimiter='\t')
+
+    d = WearPath.diff(None, one_path)
+    pathLength = WearPath.path_length(None, d)
+
+    # number of new points in path
+    nPoints = int(np.fix(pathLength / laser))
+
+    if nPoints == 1:
+        # if only one point, take first and end points
+        layer_paths.set(one_path[[0,-1]], i, q)
+        normal.set(one_path_normals[[0,-1]], i, q)
+    else:
+        p, N_indes = interpcurve(nPoints, one_path)
+        layer_paths.set(p, i, q)
+        normal.set(one_path_normals[N_indes], i, q)
+    
+    assert(len(layer_paths.get(i,q)) == len(normal.get(i,q)))
+
+    print("Layers\n", layer_paths.get(i,q), '\n', '\n', "Normals\n", normal.get(i,q))
+
 if __name__ == "__main__":
-    debug_get_paths()
+    # debug_get_paths()
     # debug_ismembertol()
+    debug_process_paths_normals(3)

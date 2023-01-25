@@ -44,7 +44,7 @@ def interpcurve(N,points):
     s = np.divide((N - cumarc[tbins]),chordlen[tbins-1])
     pt = points[tbins,:] + np.multiply((points[tbins,:] - points[tbins-1,:]),(np.vstack([s]*3)).T)
 
-    return pt, tbins
+    return pt, tbins - 1
 
 
 if __name__ == "__main__":

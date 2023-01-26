@@ -4,13 +4,12 @@ import open3d as o3d
 import numpy as np
 
 from plane import BoundingBox
+from rigid3d import RigidTransform
 
 class WearMesh():
     def __init__(self, point_cloud_object, clad_params):
-        self.Center = point_cloud_object.center 
-        self.Transformation = point_cloud_object.Transformation 
-        self.System = point_cloud_object.System 
-        self.Coordinate = point_cloud_object.Coordinate 
+        self.Center, _ = point_cloud_object.compute_mean_and_covariance() 
+        self.Transformation = RigidTransform(trans=-self.Center)
         self.Clad_Params = clad_params 
 
         # Create raw mesh from pointcloud using Delaunay method
@@ -23,9 +22,6 @@ class WearMesh():
         # Create mesh object
         self.raw_mesh = o3d.t.geometry.TriangleMesh(o3d.core.Tensor(points),
                             o3d.core.Tensor(np.int64(self.Delaunay.simplices)))
-
-        # # mesh refinement (not implemented)
-        # self.refinement(refinement_factor) 
 
         # sliced meshes ( reconstructed meshes )
         self.sliced_meshes()
@@ -161,82 +157,3 @@ class WearMesh():
             # Project each vertex onto plane using scikit-spatial
             proj[idx] = plane.project_point(v)
         return proj
-
-    #NOTE: if subdividing mesh into more triangles is needed
-    # See http://www.open3d.org/docs/release/tutorial/geometry/mesh.html#Mesh-subdivision
-    # for open3D subdivide implementations
-    #def refinement(self, refinement_factor):
-        #:param refinement_factor: number of mesh subdivisions
-        #:type refinement_factor: integer
-        # mesh_names = {'raw_mesh','reconstructed_meshes'} 
-        # if refinement_factor > 1
-        #     for n = 1:2
-        #         for m = 1:size(this.Meshes.(mesh_names{n}),1)
-        #             vertices = this.Meshes.(mesh_names{n})(m).vertices 
-        #             faces = this.Meshes.(mesh_names{n})(m).faces 
-        #             [new_vertices, new_faces] = subdivideMesh(vertices, faces, subdivisions) 
-        #             this.Meshes.(mesh_names{n})(m).vertices = new_vertices 
-        #             this.Meshes.(mesh_names{n})(m).faces = new_faces 
-        #     this.RefinementFactor = refinement_factor 
-        #     fprintf('A refinement of #d has been applied to the mesh', refinement_factor)
-
-
-#     function self = transform(self, to_system)
-#         mesh_names = {'raw_mesh','reconstructed_meshes'} 
-#         if ~strcmpi(self.System, to_system) && any(strcmpi({'global', 'local'}, to_system))
-#             for n = 1:2
-#                 for m = 1:size(self.Meshes.(mesh_names{n}),1)
-#                     vertices = self.Meshes.(mesh_names{n})(m).vertices 
-#                     transf_vertices = self.Transformation.transformPointsForward(vertices) 
-#                     self.Meshes.(mesh_names{n})(m).vertices = transf_vertices 
-#                     self.Meshes.(mesh_names{n})(m).BoudingBox = Box(boundingBox3d(transf_vertices))    # update BoundingBox
-                    
-                
-#             self.Center =  self.Transformation.transformPointsForward(self.Center) 
-#             self.System = to_system 
-#             self.Transformation.Translation = -1 * self.Transformation.Translation          # flipping translation
-#             fprintf('A transformation has been applied to meshes, meshes is now in  #d system', to_system)
-#         else
-#             fprintf('Meshes are already in  #d system', to_system)
-            
-#     function self = convert(self, to_coord)
-#             #convert Summary of self method goes here
-#             #   Detailed explanation goes here
-
-#         mesh_names = {'raw_mesh','reconstructed_meshes'} 
-#         if ~matches(self.Coordinate, to_coord)
-#                 # loop over meshes
-#             for n = 1:2
-#                 for m = 1:size(self.Meshes.(mesh_names{n}),1)
-#                     vertices = self.Meshes.(mesh_names{n})(m).vertices 
-#                         # convert from current system to the targeted system:
-#                     converted_vertices = coordSystems.convert(vertices, coordSystems(self.Coordinate), coordSystems(to_coord)) 
-#                     self.Meshes.(mesh_names{n})(m).vertices = converted_vertices 
-#                     self.Meshes.(mesh_names{n})(m).BoudingBox = Box(boundingBox3d(converted_vertices)) 
-                    
-                
-#                 # update meshes params
-#             self.Transformation.Translation = coordSystems.convert(self.Transformation.Translation, coordSystems(self.Coordinate), coordSystems(to_coord)) 
-#             self.Center =  coordSystems.convert(self.Center, coordSystems(self.Coordinate), coordSystems(to_coord)) 
-#             self.Coordinate = to_coord 
-#         else
-#             fprintf('No convertion applied, meshes are already in  #d', to_coord) 
-            
-#     function out = export(self, to_system, to_coord)
-#             # Example: Mesh.export('local', 'cart')
-#             # check if system is different
-#         if ~matches(self.System, to_system)
-#             temp = transform(self, to_system) 
-#                 # check if coordinate is different
-#             if ~matches(self.Coordinate, to_coord)
-#                 temp = convert(temp, to_coord) 
-#                 out = temp.Meshes 
-#             else
-#                 out = temp.Meshes 
-                
-#         else
-#             if ~matches(self.Coordinate, to_coord)
-#                 temp = convert(self, to_coord) 
-#                 out = temp.Meshes 
-#             else
-#                 out = self.Meshes

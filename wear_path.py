@@ -1,28 +1,24 @@
 import numpy as np
 from math import radians, ceil, floor
 from skspatial.objects import Plane, Line
-import multiprocessing
 
 from rigid3d import rotation_around_z
 from plane import BoundingBox
 from multicell import MultiCell
 from interparc import interpcurve
-from coord_systems import convert_coords
+# from coord_systems import convert_coords
 
 class WearPath():
-    def __init__(self, meshes_obj=None, clad_params=None, debug=False):
-        if not debug:
-            self.Meshes = meshes_obj
-            self.Transformation = meshes_obj.Transformation
-            self.System = meshes_obj.System
-            self.Coordinate = meshes_obj.Coordinate
-            self.Clad_Params = clad_params
+    def __init__(self, meshes_obj, clad_params):
+        self.Meshes = meshes_obj
+        self.Transformation = meshes_obj.Transformation
+        self.Clad_Params = clad_params
 
-            # clippers generation
-            self.generate_clippers()
+        # clippers generation
+        self.generate_clippers()
 
-            # processing paths generation
-            self.generate_paths_and_normals()
+        # processing paths generation
+        self.generate_paths_and_normals()
 
     def generate_clippers(self):
         # init vars
@@ -146,7 +142,6 @@ class WearPath():
             results[i] = plane.side_point(points[i])
         return results
 
-    #FIXME: verify accuracy compared to MATLAB function
     def ismembertol(self, a, b, tol):
         return np.all(np.abs(a-b) <= tol, axis=1)
 
@@ -164,10 +159,6 @@ class WearPath():
         if not np.array_equal(face[0], face[-1]):
             face = np.append(face, [face[0]], axis=0)
 
-        # FIXME: not sure what this does, why any would ever equal 2
-        # checking if the vertices are on the plane:
-        # vof(vof == 2) = ~vof(any(vof ~= 2))
-
         # indices of edges intersecting the plane
         ind = np.where( (vof != np.roll(vof, -1)) == 1)[0]
 
@@ -182,7 +173,6 @@ class WearPath():
         return intersections
 
     # return numpy array of the differences between subsequent points
-    # verified by unit testing
     def diff(self, points):
         # Return vectorized subtraction, ignoring first index
         return (points - np.roll(points,1, axis=0))[1:]
@@ -319,15 +309,16 @@ class WearPath():
         for nPaths in range(len(layer_paths)):
             for q in range(layer_paths.len_subset(nPaths)):
                 lp = layer_paths.get(nPaths,q)
+
                 # Calculate normal vectors
                 d = self.diff(lp)
                 norm = np.linalg.norm(d, axis=-1, keepdims=True)
-                # Prevent divide by zero
-                # norm[norm == 0] = 1
                 cross = np.cross(d/norm, self.Clippers[layer][0].normal)
+
                 # make sure they are pointing upwards in the build direction
                 np.abs(cross[:,2], out=cross[:,2])
                 normals.set(cross, nPaths, q)
+
         return normals
         
     def process_paths_normals(self, layer, layer_paths, normal):
@@ -353,9 +344,6 @@ class WearPath():
                     p, N_indes = interpcurve(nPoints,one_path)
                     layer_paths.set(p, i, q)
                     normal.set(one_path_normals[N_indes], i, q)
-                
-                #FIXME
-                assert(len(layer_paths.get(i,q)) == len(normal.get(i,q)))
             
                 # computing depth of points
                 point = layer_paths.get(i,q)
@@ -369,163 +357,47 @@ class WearPath():
         return layer_paths, normal, layer_depth
 
     # Export path variables to specified sys/coords
-    def export(self, to_system, to_coord):
-        if self.System != to_system:
-            self.transform(to_system)
-
-        # if self.Coordinate != to_coord:
-        #     self.convert(to_coord)
-        #FIXME: doesn't change depths/normal coords for some reason?
+    def export(self):
+        # NOTE: can use unused fcns below for converting exported coord types
         return self.Paths, self.Depths, self.Normals
 
-    def transform(self, to_system):
-        if self.System != to_system and self.System in ['global', 'local']:
-            paths = self.Paths
-            for l in range(len(paths)):
-                for g in range(len(paths[l])):
-                    for p in range(paths[l].len_subset(g)):
-                        # Apply transform to path points
-                        points = paths[l].get(g,p)
-                        tf_points = self.Transformation.applyToPoints(points)
-                        paths[l].set(tf_points, g, p)
 
-            # update points and center
-            self.System = to_system
-            self.Transformation.flip()
-            self.Paths = paths
-        else:
-            print("System is already in", to_system)
+#########################################################################
+'''UNUSED, BUT USEFUL METHODS FOR CONVERTING EXPORTED COODINATES'''
+    # def transform(self, to_system):
+    #     if self.System != to_system and self.System in ['global', 'local']:
+    #         paths = self.Paths
+    #         for l in range(len(paths)):
+    #             for g in range(len(paths[l])):
+    #                 for p in range(paths[l].len_subset(g)):
+    #                     # Apply transform to path points
+    #                     points = paths[l].get(g,p)
+    #                     tf_points = self.Transformation.applyToPoints(points)
+    #                     paths[l].set(tf_points, g, p)
 
-    def convert(self, to_coord):
-        # to_coord: 'none', 'cart', 'cyl', 'sphe'
-        # convert from current system to the targeted system
-        paths = self.Paths
-        for l in range(len(paths)):
-            for g in range(len(paths[l])):
-                for p in range(paths[l].len_subset(g)):
-                        # Apply transform to path points
-                        points = paths[l].get(g,p)
-                        points = convert_coords(points, self.Coordinate, to_coord) 
-                        paths[l].set(points, g, p)
+    #         # update points and center
+    #         self.System = to_system
+    #         self.Transformation.flip()
+    #         self.Paths = paths
+    #     else:
+    #         print("System is already in", to_system)
+
+    # def convert(self, to_coord):
+    #     # to_coord: 'none', 'cart', 'cyl', 'sphe'
+    #     # convert from current system to the targeted system
+    #     paths = self.Paths
+    #     for l in range(len(paths)):
+    #         for g in range(len(paths[l])):
+    #             for p in range(paths[l].len_subset(g)):
+    #                     # Apply transform to path points
+    #                     points = paths[l].get(g,p)
+    #                     points = convert_coords(points, self.Coordinate, to_coord) 
+    #                     paths[l].set(points, g, p)
         
-        # Convert translation coords
-        trans = self.Transformation.getTranslation()
-        self.Transformation.setTranslation(convert_coords(trans, self.Coordinate, to_coord))
+    #     # Convert translation coords
+    #     trans = self.Transformation.getTranslation()
+    #     self.Transformation.setTranslation(convert_coords(trans, self.Coordinate, to_coord))
 
-        # update center and coordinate
-        self.Coordinate = to_coord
-        self.Paths = paths
-    
-######################################################################################
-
-#DEBUGGING FUNCTIONS
-def debug_get_paths():
-    # Get clipper planes from MATLAB debug output 
-    layer_clippers = []
-    planes = np.loadtxt('unit_tests/get_paths/clippers.txt', dtype=np.float32, delimiter='\t')
-    for row in planes:
-        plane = Plane.from_vectors(row[:3], row[3:6], row[6:])
-        layer_clippers.append(plane)
-
-    verts = np.loadtxt('unit_tests/get_paths/verts.txt', dtype=np.float32, delimiter='\t')
-    faces = np.loadtxt('unit_tests/get_paths/faces.txt', dtype=np.int32, delimiter='\t') - 1
-
-    # Debug get_paths()
-    layer = 1
-    debug = True
-    wp = WearPath(debug=True)
-    layer_paths = wp.get_paths(layer, debug, layer_clippers, verts, faces)
-    print(layer_paths)
-
-def debug_ismembertol():
-    # init
-    wp = WearPath(debug=True)
-    grouped_path = []
-    # tol = 1.49011611938477e-08
-    tol = np.finfo(np.float32).eps
-
-    # load test from MATLAB
-    path = np.loadtxt('unit_tests/ismembertol/path.txt', dtype=np.float32, delimiter='\t')
-    rel_tol = tol*np.max(np.abs(path))
-
-    # search for separation points in paths and group the connected paths
-    s_p = 0 # starting point of new group
-    for row in range(len(path)):
-        inds = wp.ismembertol(path, path[row], rel_tol)
-
-        if sum(inds) == 1 and s_p != row:
-            grouped_path.append(path[s_p:row+1])  # grouping connected paths
-            s_p = row+1
-        elif row == len(path)-1 and not grouped_path:
-            temp = path[1:-1] # points w/o first and final
-            inds1 = wp.ismembertol(temp, path[0], rel_tol) # first point
-            inds2 = wp.ismembertol(temp, path[-1],rel_tol) # last point
-            if sum(inds1) == 0:
-                temp = np.append(temp, path[0], axis=0)
-        
-            if sum(inds2) == 0:
-                temp = np.append(temp, path[-1], axis=0)
-        
-            grouped_path.append(temp) # grouping connected paths
-
-    print(grouped_path)
-
-def debug_process_paths_normals(laser):
-    # processing points and normals
-    i = 0
-    q = 0
-    layer_paths = MultiCell()
-    normal = MultiCell()
-
-    one_path = np.loadtxt('unit_tests/process_paths_normals/path.txt', dtype=np.float32, delimiter='\t')
-    one_path_normals = np.loadtxt('unit_tests/process_paths_normals/normals.txt', dtype=np.float32, delimiter='\t')
-
-    d = WearPath.diff(None, one_path)
-    pathLength = WearPath.path_length(None, d)
-
-    # number of new points in path
-    nPoints = int(np.fix(pathLength / laser))
-
-    if nPoints == 1:
-        # if only one point, take first and end points
-        layer_paths.set(one_path[[0,-1]], i, q)
-        normal.set(one_path_normals[[0,-1]], i, q)
-    else:
-        p, N_indes = interpcurve(nPoints, one_path)
-        layer_paths.set(p, i, q)
-        normal.set(one_path_normals[N_indes], i, q)
-    
-    assert(len(layer_paths.get(i,q)) == len(normal.get(i,q)))
-
-    print("Layers\n", layer_paths.get(i,q), '\n', '\n', "Normals\n", normal.get(i,q))
-
-def test_export():
-    from rigid3d import RigidTransform
-    from coord_systems import Coords
-    points = np.loadtxt('unit_tests/export_paths/init_path.txt', dtype=np.float32, delimiter='\t')
-    # t = np.loadtxt('unit_tests/export_paths/transform.txt', dtype=np.float32, delimiter='\t')
-
-    # load tests
-    transformed = np.loadtxt('unit_tests/export_paths/after_transform.txt', dtype=np.float32, delimiter='\t')
-    converted = np.loadtxt('unit_tests/export_paths/after_coord.txt', dtype=np.float32, delimiter='\t')
-
-    # Test transform
-    t = RigidTransform(trans=np.array([181.310999224263, 617.911856515067, 63.4038704639206]))
-    tf_points = t.applyToPoints(points)
-    assert(np.array_equal(tf_points,transformed))
-    # print(tf_points)
-    # print()
-    # print(transformed)
-
-    # test coord convert
-    c_points = convert_coords(tf_points, Coords.CYL, Coords.CART) 
-    # assert(np.array_equal(c_points,converted))
-    print(c_points)
-    print()
-    print(converted)
-
-if __name__ == "__main__":
-    # debug_get_paths()
-    # debug_ismembertol()
-    # debug_process_paths_normals(3)
-    test_export()
+    #     # update center and coordinate
+    #     self.Coordinate = to_coord
+    #     self.Paths = paths

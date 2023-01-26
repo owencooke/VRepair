@@ -38,19 +38,109 @@ class MyMainWindow(MainWindow):
         exitButton.triggered.connect(self.close)
         fileMenu.addAction(exitButton)
 
-        # allow adding a sphere
+        # add mesh plot
         meshMenu = mainMenu.addMenu('Mesh')
         self.add_sphere_action = QtWidgets.QAction('Add Wear', self)
-        self.add_sphere_action.triggered.connect(self.add_sphere)
+        self.add_sphere_action.triggered.connect(self.plot)
         meshMenu.addAction(self.add_sphere_action)
 
         if show:
             self.show()
 
-    def add_sphere(self):
+    def plot(self):
         print("Processing")
         start = time.time()
+        # get path and normal data
+        # paths, normals = self.wear() # WEAR PROGRAM
+        paths, normals = self.load_test_data() # SAVED CSV DATA
+        end = time.time()
+        print(end-start, "seconds")
 
+        # Visualize data
+        for i in range(len(paths)):
+            color = np.random.rand(3,)
+            for j in range(len(paths[i])):
+                for q in range(paths[i].len_subset(j)):
+                    # Create path line
+                    points = paths[i].get(j,q)
+                    # spline = pv.Spline(points, len(points))#.tube(radius=0.05)
+                    spline = pv.PolyData()
+                    spline.points = points
+                    the_cell = np.arange(0, len(points), dtype=np.int_)
+                    the_cell = np.insert(the_cell, 0, len(points))
+                    spline.lines = the_cell
+                    # spline = spline.tube(radius=0.5)
+                    spline.scale([1,1,10],inplace=True)
+
+                    # plot normal arrow at each point in opposite color
+                    scale = 2
+                    spline["vectors"] = normals[i].get(j,q) * scale
+                    spline.set_active_vectors("vectors")
+
+                    self.plotter.add_mesh(spline.arrows, lighting=False, color=1-color)
+                    self.plotter.add_mesh(spline, smooth_shading=True, color=color, line_width=10)
+
+        self.plotter.reset_camera()
+
+    def load_test_data(self):
+        import csv
+        from multicell import MultiCell
+
+        f = "test_output.csv"
+        paths = []
+        normals = []
+        with open(f, 'r') as csvfile:
+            reader = csv.reader(csvfile)
+
+            p = []
+            n = []
+            path_cell = MultiCell()
+            norm_cell = MultiCell()
+            path_count = 0
+            group = 0
+            layer = 0
+            for idx, row in enumerate(reader):
+                if idx != 0: #ignore header row
+                    #check for layer change
+                    if layer != int(float(row[0])):
+                        # store previous layer cell
+                        paths.append(path_cell)
+                        normals.append(norm_cell)
+
+                        # reset cells to empty
+                        path_cell = MultiCell()
+                        norm_cell = MultiCell()
+                        p = []
+                        n = []
+                        path_count = 0
+                    
+                    # check for group change
+                    if group != int(float(row[1])):
+                        path_count = 0
+                        p = []
+                        n = []
+
+                    group = int(float(row[1]))
+
+                    p.append(list(float(i) for i in row[4:7]))
+                    n.append(list(float(i) for i in row[7:]))
+
+                    # check if its last point in path
+                    if int(float(row[2])) == 1:
+                        path_cell.set(np.array(p), group, path_count)
+                        norm_cell.set(np.array(n), group, path_count)
+
+                        # reset points/norms
+                        p = []
+                        n = []
+                        path_count += 1
+                    
+                    group = int(float(row[1]))
+                    layer = int(float(row[0]))
+
+        return paths, normals
+
+    def wear(self):
         # Instantiate cladding parameters
         cladding = CladParams(1,                     # clad height (mm)
                                 10,                     # clad width  (mm)
@@ -69,35 +159,7 @@ class MyMainWindow(MainWindow):
                                 Coords.CYL)                  # point cloud cooridante
         model.run()
 
-        end = time.time()
-        print(end-start, "seconds")
-
-        # Create paths and normals
-        paths = model.Paths.Paths
-        for i in range(len(paths)):
-            color = np.random.rand(3,)
-            for j in range(len(paths[i])):
-                for q in range(paths[i].len_subset(j)):
-                    # Create path line
-                    points = paths[i].get(j,q)
-                    # spline = pv.Spline(points, len(points))#.tube(radius=0.05)
-                    spline = pv.PolyData()
-                    spline.points = points
-                    the_cell = np.arange(0, len(points), dtype=np.int_)
-                    the_cell = np.insert(the_cell, 0, len(points))
-                    spline.lines = the_cell
-                    # spline = spline.tube(radius=0.5)
-
-                    # plot normal arrow at each point in opposite color
-                    vectors = model.Paths.Normals[i].get(j,q)
-                    spline["vectors"] = vectors
-                    spline.set_active_vectors("vectors")
-
-                    self.plotter.add_mesh(spline.arrows, lighting=False, color=1-color)
-                    self.plotter.add_mesh(spline, smooth_shading=True, color=color, line_width=5)
-
-        self.plotter.set_scale(zscale=10)
-        self.plotter.reset_camera() 
+        return model.Paths.Paths, model.Paths.Normals
 
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)

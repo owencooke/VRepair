@@ -80,14 +80,21 @@ class MyMainWindow(MainWindow):
                 for q in range(paths[i].len_subset(j)):
                     # Create path line
                     points = paths[i].get(j,q)
-                    spline = pv.Spline(points).tube(radius=0.05)
+                    # spline = pv.Spline(points, len(points))#.tube(radius=0.05)
+                    spline = pv.PolyData()
+                    spline.points = points
+                    the_cell = np.arange(0, len(points), dtype=np.int_)
+                    the_cell = np.insert(the_cell, 0, len(points))
+                    spline.lines = the_cell
+                    # spline = spline.tube(radius=0.5)
 
-                    # # plot normal arrow at each point in opposite color
-                    # vectors = model.Paths.Normals[i].get(j,q)
-                    # spline["vectors"] = vectors * 0.3
-                    # spline.set_active_vectors("vectors")
+                    # plot normal arrow at each point in opposite color
+                    vectors = model.Paths.Normals[i].get(j,q)
+                    spline["vectors"] = vectors
+                    spline.set_active_vectors("vectors")
 
-                    self.plotter.add_mesh(spline, smooth_shading=True, color=color)
+                    self.plotter.add_mesh(spline.arrows, lighting=False, color=1-color)
+                    self.plotter.add_mesh(spline, smooth_shading=True, color=color, line_width=5)
 
         self.plotter.set_scale(zscale=10)
         self.plotter.reset_camera() 

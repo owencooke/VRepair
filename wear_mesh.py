@@ -2,29 +2,30 @@ from math import ceil, floor
 from scipy.spatial import Delaunay
 import open3d as o3d
 import numpy as np
+import pyvista as pv
 
 from plane import BoundingBox
 from rigid3d import RigidTransform
 
 class WearMesh():
-    def __init__(self, point_cloud_object, clad_params):
-        self.Center, _ = point_cloud_object.compute_mean_and_covariance() 
+    def __init__(self, points, clad_params):
+        self.Center = np.mean(points, axis=0)
         self.Transformation = RigidTransform(trans=-self.Center)
-        self.Clad_Params = clad_params 
+        self.Clad_Params = clad_params
 
-        # Create raw mesh from pointcloud using Delaunay method
-        points = np.asarray(point_cloud_object.points, dtype=np.float32)
-
+        # Create raw mesh from points using Delaunay method
         self.Delaunay = Delaunay(points[:,:2])
+
+        # cloud = pv.wrap(points)
+        # surf = cloud.reconstruct_surface()
+        # faces = surf.faces.reshape((-1, 4))[:,1:]
+
         self.raw_vertices = points
         self.raw_BoundingBox = BoundingBox(points)
-
-        # Create mesh object
         self.raw_mesh = o3d.t.geometry.TriangleMesh(o3d.core.Tensor(points),
                             o3d.core.Tensor(np.int64(self.Delaunay.simplices)))
-
-        # sliced meshes ( reconstructed meshes )
-        self.sliced_meshes()
+        # self.raw_mesh = o3d.t.geometry.TriangleMesh(o3d.core.Tensor(points),
+        #                     o3d.core.Tensor(faces))
 
     def calc_layer_step(self, edge, clad_height):
         #CALC_LAYER_STEP Calculate the layer step distance, and how many layer will fit in
@@ -59,7 +60,7 @@ class WearMesh():
 
         return cal_layer_step, nlayers, offset
 
-    def sliced_meshes(self):
+    def generate_slices(self):
         # Create a vertical 3D edge connecting top to bottom of the bounding box
         height = self.raw_BoundingBox.extent[2]
         edge = np.array((0,0,height))
@@ -155,5 +156,7 @@ class WearMesh():
         proj = np.zeros((len(mesh_vertices), 3))
         for idx, v in enumerate(mesh_vertices):
             # Project each vertex onto plane using scikit-spatial
+            if np.nan in v:
+                print()
             proj[idx] = plane.project_point(v)
         return proj

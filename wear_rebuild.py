@@ -28,13 +28,14 @@ class WearRebuild():
                                 3                     # max laser defocus (mm)
         )
 
-    def raw_points(self):
+    def cloud_points(self):
         return np.asarray(self.cloud.points)
-
+    
     # Execute repair process
     def run(self): 
-        # 2- meshes object construction
-        self.Meshes = WearMesh(self.cloud, self.Clad_Params) 
+        self.Meshes = WearMesh(self.cloud_points(), self.Clad_Params) 
+        # generate sliced mesh
+        self.Meshes.generate_slices()
         self.Clad_Params = self.Meshes.Clad_Params   # update clad_params
 
         # # 3- paths object constuction
@@ -88,7 +89,7 @@ class WearRebuild():
         fig = plt.figure(figsize=plt.figaspect(0.5))
         ax = fig.add_subplot(1, 1, 1, projection='3d')
         # Plot data
-        vertices = self.raw_points()
+        vertices = self.cloud_points()
         ax.scatter(vertices[:,0], vertices[:,1], vertices[:,2])
         plt.show()
 

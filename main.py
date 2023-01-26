@@ -4,8 +4,6 @@ import numpy as np
 import open3d as o3d 
 import pyvista as pv
 from pyvistaqt import QtInteractor, MainWindow
-from matplotlib import cm
-import matplotlib.pyplot as plt
 
 # Setting the Qt bindings for QtPy
 import os
@@ -13,8 +11,7 @@ os.environ["QT_API"] = "pyside6"
 from qtpy import QtWidgets
 
 from wear_rebuild import WearRebuild
-from clad_params import CladParams
-from coord_systems import Coords
+from wear_mesh import WearMesh
 
 class MyMainWindow(MainWindow):
 
@@ -52,37 +49,44 @@ class MyMainWindow(MainWindow):
 
         # add mesh gen button
         triangleButton = QtWidgets.QAction('Triangulate Mesh', self)
-        triangleButton.triggered.connect(self.plot)
+        triangleButton.triggered.connect(self.load_raw_mesh)
         meshMenu.addAction(triangleButton)
 
         if show:
             self.show()
 
     def load_cloud(self):
-        # filename = "FBH.pcd"
-        filename = QtWidgets.QFileDialog.getOpenFileName(self, caption="Open Point Cloud", filter="3D Files (*.pcd *.ply)")[0]
+        self.reset_viewer()
+        filename = "FBH.pcd"
+        # filename = QtWidgets.QFileDialog.getOpenFileName(self, caption="Open Point Cloud", filter="3D Files (*.pcd *.ply)")[0]
         # cloud = pv.read(filename)
-
-        # # load PCD using Open3D
-        # pcd = o3d.io.read_point_cloud(filename)
-        # points = np.asarray(pcd.points)
-        # self.cloud = pv.PolyData(points)
-        # self.cloud.scale([1,1,10],inplace=True)
 
         # init Rebuild class with pointcloud file
         self.rebuild = WearRebuild(filename)
-        points = self.rebuild.raw_points()
+        points = self.rebuild.cloud_points()
         self.cloud = pv.PolyData(points)
-        self.cloud.scale([1,1,10],inplace=True)
-        self.plotter.add_mesh(self.cloud.elevation(), cmap="jet")
+        # self.cloud.scale([1,1,10],inplace=True)
+        self.plotter.add_points(self.cloud.elevation(), cmap="jet")
+
+    def reset_viewer(self):
         self.plotter.reset_camera()
+        self.plotter.set_scale(zscale=10)
+        self.plotter.clear()
 
-    def triangulate(self):
+    def load_raw_mesh(self):
+        self.reset_viewer()
         # create mesh from points using Delaunay
-        pass
-
+        points = self.rebuild.cloud_points()
+        self.wearMesh = WearMesh(points, self.rebuild.Clad_Params)
+        # plot mesh using Pyvista
+        triangles = self.wearMesh.Delaunay.simplices
+        threes = np.full(len(triangles),3)
+        triangles = np.column_stack((threes,triangles)).flatten()
+        self.mesh = pv.PolyData(points, triangles)
+        self.plotter.add_mesh(self.mesh.elevation(), cmap="jet")
 
     def plot(self):
+        self.reset_viewer()
         print("Processing")
         start = time.time()
         # get path and normal data
@@ -105,7 +109,7 @@ class MyMainWindow(MainWindow):
                     the_cell = np.insert(the_cell, 0, len(points))
                     spline.lines = the_cell
                     # spline = spline.tube(radius=0.5)
-                    spline.scale([1,1,10],inplace=True)
+                    # spline.scale([1,1,10],inplace=True)
 
                     # plot normal arrow at each point in opposite color
                     scale = 2
@@ -114,8 +118,6 @@ class MyMainWindow(MainWindow):
 
                     self.plotter.add_mesh(spline.arrows, lighting=False, color=1-color)
                     self.plotter.add_mesh(spline, smooth_shading=True, color=color, line_width=5)
-
-        self.plotter.reset_camera()
 
     def load_test_data(self):
         import csv
@@ -176,24 +178,9 @@ class MyMainWindow(MainWindow):
         return paths, normals
 
     def wear(self):
-        # Instantiate cladding parameters
-        cladding = CladParams(1,                     # clad height (mm)
-                                10,                     # clad width  (mm)
-                                5,                     # max clad step (mm)  (clads overlap is considered)
-                                0,                     # clad orientation (degrees)
-                                0,                # clad cross hatching ( enable or disable )
-                                0,                     # layer offset (e.g. 0.5) (0-1)
-                                3                     # max laser defocus (mm)
-        )
-
         # Run wear rebuild program
-        model = WearRebuild('FBH.pcd',           # filename
-                                cladding,
-                                'delaunay',               # meshing algorithm ( 'delaunay', 'crust' )
-                                1,                     # mesh refinement factor (int)
-                                Coords.CYL)                  # point cloud cooridante
+        model = WearRebuild('FBH.pcd')
         model.run()
-
         return model.Paths.Paths, model.Paths.Normals
 
 if __name__ == '__main__':

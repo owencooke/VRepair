@@ -140,10 +140,10 @@ class WearRebuild():
         plt.show()
 
     def display_toolpaths(self):
+        # Plot using matplotlib (paths and normal vectors)
         fig = plt.figure(figsize=plt.figaspect(1))
         ax = fig.add_subplot(1, 1, 1, projection='3d')
-
-        # Plot using matplotlib (paths and normal vectors)
+        
         paths = self.Paths.Paths
         for i in range(len(paths)):
             color = np.random.rand(3,)

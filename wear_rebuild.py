@@ -2,8 +2,9 @@ import csv
 import numpy as np
 import open3d as o3d
 import matplotlib.pyplot as plt
+import time
 
-from wear_ptcd import WearPointCloud
+from clad_params import CladParams
 from wear_mesh import WearMesh
 from wear_path import WearPath
 
@@ -12,59 +13,40 @@ A program for generating toolpaths for the repairing process of
 a wear using metal deposition modeling process.
 '''
 class WearRebuild(): 
-    System = 'global'           # Model working system ('global', 'local').
-
-    def __init__(self, filename, clad_params, mesh_method,
-                refinement_factor, point_cloud_coordinate):
-            
+    def __init__(self, filename):
         self.FILENAME = filename 
+        # initialize raw point cloud from file
+        self.cloud = o3d.io.read_point_cloud(filename)
 
-        # store cladding parameters
-        self.Clad_Params = clad_params
+        # init cladding parameters
+        self.Clad_Params = CladParams(1,                     # clad height (mm)
+                                10,                     # clad width  (mm)
+                                5,                     # max clad step (mm)  (clads overlap is considered)
+                                0,                     # clad orientation (degrees)
+                                0,                # clad cross hatching ( enable or disable )
+                                0,                     # layer offset (e.g. 0.5) (0-1)
+                                3                     # max laser defocus (mm)
+        )
 
-        self.MeshMethod = mesh_method 
-        self.RefinementFactor = refinement_factor 
-        self.Coordinate = point_cloud_coordinate
+    def raw_points(self):
+        return np.asarray(self.cloud.points)
 
     # Execute repair process
-    def run(self):
-        # 1- point cloud object construction
-        self.Point_Cloud = WearPointCloud(self.FILENAME, self.Coordinate, self.System) 
-        self.System = self.Point_Cloud.System    # update model system depends on point cloud system
-
+    def run(self): 
         # 2- meshes object construction
-        self.Meshes = WearMesh(self.Point_Cloud, self.Clad_Params) 
+        self.Meshes = WearMesh(self.cloud, self.Clad_Params) 
         self.Clad_Params = self.Meshes.Clad_Params   # update clad_params
 
         # # 3- paths object constuction
         self.Paths = WearPath(self.Meshes, self.Clad_Params) 
         self.Clad_Params = self.Paths.Clad_Params   # update clad_params
-
-    # export point cloud
-    def pcd_export(self,to_system, to_coordinate): 
-        # new_name = convertStringsToChars( erase(pwd,'src') + "output\" + erase(self.FILENAME, {'data/','.pcd'}) + ".ply" ) 
-        # pcd = self.Point_Cloud.export(to_system, to_coordinate) 
-        # pcwrite(pcd, new_name,'Encoding','binary')
-        # print('Point Cloud is exported as: ', new_name)
-        pass
-
-    # export meshes
-    def mesh_export(self,to_system, to_coordinate):
-        # meshes = self.Meshes.export(to_system, to_coordinate) 
-        # mesh_names = {'raw_mesh','reconstructed_meshes'} 
-        # for n = 1:2
-        #     for m = 1:size(self.Meshes.Meshes.(mesh_names{n}),1)
-        #         new_name = convertStringsToChars( erase(pwd,'src') + "output\" + erase(self.FILENAME, {'data/','.pcd'}) + mesh_names{n} + num2str(m) + ".stl" ) 
-        #         stlwrite(new_name, meshes.(mesh_names{n})(m).faces, meshes.(mesh_names{n})(m).vertices)
-        #         print('Mesh is exported as: ', new_name)
-        pass
  
     # export paths to CSV
-    def paths_export(self, to_system, to_coordinate):
+    def paths_export(self):
         out = "test_output.csv"
 
         # get path values according to system/coord type
-        paths, depths, normals = self.Paths.export(to_system, to_coordinate)
+        paths, depths, normals = self.Paths.export()
 
         # Create CSV output file
         header = ['layer_number', 'group', 'point_code','point_depth', 'X','Y','Z','Nx','Ny','Nz']
@@ -100,13 +82,13 @@ class WearRebuild():
     '''DISPLAY FUNCTIONS (MATPLOTLIB/OPEN3D)'''
     def display_pcd(self):
         # Using Open3D
-        # o3d.visualization.draw_geometries([self.Point_Cloud.pcd])
+        # o3d.visualization.draw_geometries([self.cloud])
 
         # Using matplotlib
         fig = plt.figure(figsize=plt.figaspect(0.5))
         ax = fig.add_subplot(1, 1, 1, projection='3d')
         # Plot data
-        vertices = np.asarray(self.Point_Cloud.pcd.points)
+        vertices = self.raw_points()
         ax.scatter(vertices[:,0], vertices[:,1], vertices[:,2])
         plt.show()
 
@@ -162,41 +144,21 @@ class WearRebuild():
         plt.show()
 
 if __name__ == "__main__":
-    import time
-    from clad_params import CladParams
-    from coord_systems import Coords
-
     print("Processing")
     start = time.time()
 
-    # Instantiate cladding parameters
-    cladding = CladParams(1,                     # clad height (mm)
-                            10,                     # clad width  (mm)
-                            5,                     # max clad step (mm)  (clads overlap is considered)
-                            0,                     # clad orientation (degrees)
-                            0,                # clad cross hatching ( enable or disable )
-                            0,                     # layer offset (e.g. 0.5) (0-1)
-                            3                     # max laser defocus (mm)
-    )
-
     # Run wear rebuild program
-    model = WearRebuild('FBH.pcd',           # filename
-                            cladding,
-                            'delaunay',               # meshing algorithm ( 'delaunay', 'crust' )
-                            1,                     # mesh refinement factor (int)
-                            Coords.CYL)                  # point cloud cooridante
+    model = WearRebuild('FBH.pcd')
     model.run()
 
     end = time.time()
     print(end-start, "seconds")
 
     # post-processing section
-    # model.display_pcd()
-    # model.display_raw_mesh()
-    # model.display_reconst_meshes()
-    # model.display_toolpaths()
+    model.display_pcd()
+    model.display_raw_mesh()
+    model.display_reconst_meshes()
+    model.display_toolpaths()
 
-    # exporting data:
-    # # model.pcd_export('global', 'cyl')     # (to_system, to_coordinate)
-    # # model.mesh_export('global', 'cyl')     
-    model.paths_export('global', Coords.CART)
+    # export paths
+    model.paths_export()

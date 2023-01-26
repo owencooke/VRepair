@@ -1,8 +1,11 @@
 import sys
 import time
 import numpy as np
+import open3d as o3d 
 import pyvista as pv
 from pyvistaqt import QtInteractor, MainWindow
+from matplotlib import cm
+import matplotlib.pyplot as plt
 
 # Setting the Qt bindings for QtPy
 import os
@@ -24,6 +27,7 @@ class MyMainWindow(MainWindow):
 
         # add the pyvista interactor object
         self.plotter = QtInteractor(self.frame)
+        self.plotter.add_axes()
         vlayout.addWidget(self.plotter.interactor)
         self.signal_close.connect(self.plotter.close)
 
@@ -33,19 +37,50 @@ class MyMainWindow(MainWindow):
         # simple menu to demo functions
         mainMenu = self.menuBar()
         fileMenu = mainMenu.addMenu('File')
+        meshMenu = mainMenu.addMenu('Repair')
+
+        # add point cloud load button
+        loadButton = QtWidgets.QAction('Load PointCloud', self)
+        loadButton.triggered.connect(self.load_cloud)
+        fileMenu.addAction(loadButton)
+
+        # add exit app button
         exitButton = QtWidgets.QAction('Exit', self)
         exitButton.setShortcut('Ctrl+Q')
         exitButton.triggered.connect(self.close)
         fileMenu.addAction(exitButton)
 
-        # add mesh plot
-        meshMenu = mainMenu.addMenu('Mesh')
-        self.add_sphere_action = QtWidgets.QAction('Add Wear', self)
-        self.add_sphere_action.triggered.connect(self.plot)
-        meshMenu.addAction(self.add_sphere_action)
+        # add mesh gen button
+        triangleButton = QtWidgets.QAction('Triangulate Mesh', self)
+        triangleButton.triggered.connect(self.plot)
+        meshMenu.addAction(triangleButton)
 
         if show:
             self.show()
+
+    def load_cloud(self):
+        # filename = "FBH.pcd"
+        filename = QtWidgets.QFileDialog.getOpenFileName(self, caption="Open Point Cloud", filter="3D Files (*.pcd *.ply)")[0]
+        # cloud = pv.read(filename)
+
+        # # load PCD using Open3D
+        # pcd = o3d.io.read_point_cloud(filename)
+        # points = np.asarray(pcd.points)
+        # self.cloud = pv.PolyData(points)
+        # self.cloud.scale([1,1,10],inplace=True)
+
+        # init Rebuild class with pointcloud file
+        self.rebuild = WearRebuild(filename)
+        points = self.rebuild.raw_points()
+        self.cloud = pv.PolyData(points)
+        self.cloud.scale([1,1,10],inplace=True)
+        self.plotter.add_mesh(self.cloud.elevation(), cmap="jet")
+        self.plotter.reset_camera()
+
+    def triangulate(self):
+        # create mesh from points using Delaunay
+        pass
+
 
     def plot(self):
         print("Processing")
@@ -78,7 +113,7 @@ class MyMainWindow(MainWindow):
                     spline.set_active_vectors("vectors")
 
                     self.plotter.add_mesh(spline.arrows, lighting=False, color=1-color)
-                    self.plotter.add_mesh(spline, smooth_shading=True, color=color, line_width=10)
+                    self.plotter.add_mesh(spline, smooth_shading=True, color=color, line_width=5)
 
         self.plotter.reset_camera()
 

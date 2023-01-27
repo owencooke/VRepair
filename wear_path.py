@@ -2,6 +2,7 @@ import csv
 import numpy as np
 from math import radians, ceil, floor
 from skspatial.objects import Plane, Line
+from qtpy.QtCore import Signal, QObject
 
 from rigid3d import rotation_around_z
 from plane import BoundingBox
@@ -9,17 +10,17 @@ from multicell import MultiCell
 from interparc import interpcurve
 # from coord_systems import convert_coords
 
+class Emitter(QObject):
+    # setting up custom signal
+    progress = Signal(int, int)
+
 class WearPath():
     def __init__(self, meshes_obj, clad_params):
         self.Meshes = meshes_obj
         self.Transformation = meshes_obj.Transformation
         self.Clad_Params = clad_params
 
-        # clippers generation
-        self.generate_clippers()
-
-        # processing paths generation
-        self.generate_paths_and_normals()
+        self.emitter = Emitter()
 
     def generate_clippers(self):
         # init vars
@@ -210,9 +211,13 @@ class WearPath():
             normal = self.get_normals(layer, layer_paths)
             layer_paths, normal, layer_depth = self.process_paths_normals(layer, layer_paths, normal)
      
+            # store
             paths.append(layer_paths)
             normals.append(normal)
             depths.append(layer_depth)
+
+            # update progress bar
+            self.emitter.progress.emit(layer+1, self.Clad_Params.LAYERS)
 
         # update object
         self.Paths = paths

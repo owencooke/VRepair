@@ -1,6 +1,5 @@
 import csv
 import sys
-import time
 import numpy as np
 import open3d as o3d
 import pyvista as pv
@@ -9,7 +8,6 @@ from pyvistaqt import QtInteractor, MainWindow
 # Setting the Qt bindings for QtPy
 import os
 os.environ["QT_API"] = "pyside6"
-
 from qtpy import QtWidgets
 from qtpy.QtCore import QThreadPool, QRunnable, Signal, Slot, QObject
 
@@ -63,9 +61,6 @@ class MyMainWindow(MainWindow):
         self.statusBar().showMessage('Ready')
         self.progressBar = QtWidgets.QProgressBar()
         self.statusBar().addPermanentWidget(self.progressBar)
-        # This is simply to show the bar
-        # self.progressBar.setGeometry(30, 40, 200, 25)
-        # self.progressBar.setValue(50)
 
         # point cloud load button
         loadButton = QtWidgets.QAction('Load PointCloud', self)
@@ -73,7 +68,7 @@ class MyMainWindow(MainWindow):
         fileMenu.addAction(loadButton)
 
         csvButton = QtWidgets.QAction('Load From CSV', self)
-        csvButton.triggered.connect(self.load_test_data)
+        csvButton.triggered.connect(self.csv_load)
         fileMenu.addAction(csvButton)
 
         # exit app button
@@ -102,7 +97,7 @@ class MyMainWindow(MainWindow):
         exportButton.triggered.connect(self.export_paths)
         meshMenu.addAction(exportButton)
 
-        # threading for long path generation
+        # create threadpool for long processes
         self.threadpool = QThreadPool()
         self.threadpool.setExpiryTimeout(1)
 
@@ -125,7 +120,6 @@ class MyMainWindow(MainWindow):
                                 3                     # max laser defocus (mm)
         )
         self.reset_viewer()
-        # filename = "FBH.pcd"
         filename, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Open Point Cloud", filter="3D Files (*.pcd *.ply)")
         if filename != "":
             # init wear class with pointcloud file
@@ -153,24 +147,27 @@ class MyMainWindow(MainWindow):
         self.threadpool.start(thread)
 
     def generate_paths(self):
-        print("Processing")
-        start = time.time()
         # generate paths
-        self.Paths = WearPath(self.Mesh, self.Mesh.Clad_Params)  
-        end = time.time()
-        print(end-start, "seconds")
+        self.Paths = WearPath(self.Mesh, self.Mesh.Clad_Params)
+        self.Paths.emitter.progress.connect(self.update_progress)
+        self.Paths.generate_clippers()
+        self.Paths.generate_paths_and_normals()
+        self.paths, _, self.normals = self.Paths.export()
+
+    @Slot(int, int)
+    def update_progress(self, layer, total):
+        self.progressBar.setValue(100 * layer/total)
 
     @Slot()
     def plot_paths_normals(self):
         self.reset_viewer()
         # Visualize data
-        paths, _, normals = self.Paths.export()
-        for i in range(len(paths)):
+        for i in range(len(self.paths)):
             color = np.random.rand(3,)
-            for j in range(len(paths[i])):
-                for q in range(paths[i].len_subset(j)):
+            for j in range(len(self.paths[i])):
+                for q in range(self.paths[i].len_subset(j)):
                     # Create path line
-                    points = paths[i].get(j,q)
+                    points = self.paths[i].get(j,q)
                     # spline = pv.Spline(points, len(points))#.tube(radius=0.05)
                     spline = pv.PolyData()
                     spline.points = points
@@ -182,96 +179,69 @@ class MyMainWindow(MainWindow):
 
                     # plot normal arrow at each point in opposite color
                     scale = 1/3
-                    spline["vectors"] = normals[i].get(j,q) * scale
+                    spline["vectors"] = self.normals[i].get(j,q) * scale
                     spline.set_active_vectors("vectors")
 
                     self.plotter.add_mesh(spline.arrows, color=1-color, line_width=5)
                     self.plotter.add_mesh(spline, smooth_shading=True, color=color, line_width=5)
+        self.progressBar.reset()
     
     def export_paths(self):
-        out = "test_output.csv"
-        out, _ = QtWidgets.QFileDialog.getSaveFileName(self, 'Save File', filter="CSV (*.csv)")
-        if out != "":
-            self.Paths.csv_export(out)
+        fout, _ = QtWidgets.QFileDialog.getSaveFileName(self, 'Save File', filter="CSV (*.csv)")
+        if fout != "":
+            self.Paths.csv_export(fout)
 
-    def load_test_data(self):
-        from multicell import MultiCell
+    def csv_load(self):
+        fin, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Path Data", filter="CSV (*.csv)")
+        if fin != "":
+            self.paths, self.normals = csv_import(fin)
+            self.plot_paths_normals()
 
-        f = "test_output.csv"
-        paths = []
-        normals = []
-        with open(f, 'r') as csvfile:
-            reader = csv.reader(csvfile)
+#FIXME: find a better file to place function
+def csv_import(fin):
+    from multicell import MultiCell
+    paths = []
+    normals = []
+    with open(fin, 'r') as csvfile:
+        reader = csv.reader(csvfile)
 
-            p = []
-            n = []
-            path_cell = MultiCell()
-            norm_cell = MultiCell()
-            path_count = 0
-            group = 0
-            layer = 0
-            for idx, row in enumerate(reader):
-                if idx != 0: #ignore header row
-                    #check for layer change
-                    if layer != int(float(row[0])):
-                        # store previous layer cell
-                        paths.append(path_cell)
-                        normals.append(norm_cell)
+        p = []
+        n = []
+        path_cell = MultiCell()
+        norm_cell = MultiCell()
+        path_count = group = layer = 0
+        for idx, row in enumerate(reader):
+            # ignore header row
+            if idx != 0:
+                # check for layer change
+                if layer != int(float(row[0])):
+                    # store previous layer cell
+                    paths.append(path_cell)
+                    normals.append(norm_cell)
+                    # reset cells to empty
+                    path_cell = MultiCell()
+                    norm_cell = MultiCell()
+                layer = int(float(row[0]))
+                
+                # check for group change
+                if group != int(float(row[1])):
+                    path_count = 0
+                group = int(float(row[1]))
 
-                        # reset cells to empty
-                        path_cell = MultiCell()
-                        norm_cell = MultiCell()
-                        p = []
-                        n = []
-                        path_count = 0
-                    
-                    # check for group change
-                    if group != int(float(row[1])):
-                        path_count = 0
-                        p = []
-                        n = []
+                # store point and normal
+                p.append(list(float(i) for i in row[4:7]))
+                n.append(list(float(i) for i in row[7:]))
 
-                    group = int(float(row[1]))
-
-                    p.append(list(float(i) for i in row[4:7]))
-                    n.append(list(float(i) for i in row[7:]))
-
-                    # check if its last point in path
-                    if int(float(row[2])) == 1:
-                        path_cell.set(np.array(p), group, path_count)
-                        norm_cell.set(np.array(n), group, path_count)
-
-                        # reset points/norms
-                        p = []
-                        n = []
-                        path_count += 1
-                    
-                    group = int(float(row[1]))
-                    layer = int(float(row[0]))
-
-        self.reset_viewer()
-        for i in range(len(paths)):
-            color = np.random.rand(3,)
-            for j in range(len(paths[i])):
-                for q in range(paths[i].len_subset(j)):
-                    # Create path line
-                    points = paths[i].get(j,q)
-                    # spline = pv.Spline(points, len(points))#.tube(radius=0.05)
-                    spline = pv.PolyData()
-                    spline.points = points
-                    the_cell = np.arange(0, len(points), dtype=np.int_)
-                    the_cell = np.insert(the_cell, 0, len(points))
-                    spline.lines = the_cell
-                    # spline = spline.tube(radius=0.5)
-                    # spline.scale([1,1,10],inplace=True)
-
-                    # plot normal arrow at each point in opposite color
-                    scale = 1/3
-                    spline["vectors"] = normals[i].get(j,q) * scale
-                    spline.set_active_vectors("vectors")
-
-                    self.plotter.add_mesh(spline.arrows, color=1-color, line_width=5)
-                    self.plotter.add_mesh(spline, smooth_shading=True, color=color, line_width=5)
+                # check if its last point in path
+                if int(float(row[2])) == 1:
+                    # store path
+                    path_cell.set(np.array(p), group, path_count)
+                    norm_cell.set(np.array(n), group, path_count)
+                    # reset points/norms
+                    p = []
+                    n = []
+                    path_count += 1
+    return paths, normals
 
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)

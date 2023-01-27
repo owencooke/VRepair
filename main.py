@@ -1,7 +1,8 @@
+import csv
 import sys
 import time
 import numpy as np
-import open3d as o3d 
+import open3d as o3d
 import pyvista as pv
 from pyvistaqt import QtInteractor, MainWindow
 
@@ -12,7 +13,7 @@ os.environ["QT_API"] = "pyside6"
 from qtpy import QtWidgets
 from qtpy.QtCore import QThreadPool, QRunnable, Signal, Slot, QObject
 
-from wear_rebuild import WearRebuild
+from clad_params import CladParams
 from wear_mesh import WearMesh
 from wear_path import WearPath
 
@@ -57,11 +58,23 @@ class MyMainWindow(MainWindow):
         mainMenu = self.menuBar()
         fileMenu = mainMenu.addMenu('File')
         meshMenu = mainMenu.addMenu('Repair')
+    
+        # Status Bar:
+        self.statusBar().showMessage('Ready')
+        self.progressBar = QtWidgets.QProgressBar()
+        self.statusBar().addPermanentWidget(self.progressBar)
+        # This is simply to show the bar
+        # self.progressBar.setGeometry(30, 40, 200, 25)
+        # self.progressBar.setValue(50)
 
         # point cloud load button
         loadButton = QtWidgets.QAction('Load PointCloud', self)
         loadButton.triggered.connect(self.load_cloud)
         fileMenu.addAction(loadButton)
+
+        csvButton = QtWidgets.QAction('Load From CSV', self)
+        csvButton.triggered.connect(self.load_test_data)
+        fileMenu.addAction(csvButton)
 
         # exit app button
         exitButton = QtWidgets.QAction('Exit', self)
@@ -84,6 +97,11 @@ class MyMainWindow(MainWindow):
         pathButton.triggered.connect(self.thread)
         meshMenu.addAction(pathButton)
 
+        # export path to CSV button
+        exportButton = QtWidgets.QAction('Export Toolpaths to CSV', self)
+        exportButton.triggered.connect(self.export_paths)
+        meshMenu.addAction(exportButton)
+
         # threading for long path generation
         self.threadpool = QThreadPool()
         self.threadpool.setExpiryTimeout(1)
@@ -91,46 +109,42 @@ class MyMainWindow(MainWindow):
         if show:
             self.show()
 
-    def load_cloud(self):
-        self.reset_viewer()
-        filename = "FBH.pcd"
-        # filename = QtWidgets.QFileDialog.getOpenFileName(self, caption="Open Point Cloud", filter="3D Files (*.pcd *.ply)")[0]
-        # cloud = pv.read(filename)
-
-        # init Rebuild class with pointcloud file
-        self.rebuild = WearRebuild(filename)
-        points = self.rebuild.cloud_points()
-        self.cloud = pv.PolyData(points)
-        # self.cloud.scale([1,1,10],inplace=True)
-        self.plotter.add_points(self.cloud.elevation(), cmap="jet")
-
     def reset_viewer(self):
         self.plotter.reset_camera()
         self.plotter.set_scale(zscale=10)
         self.plotter.clear()
 
+    def load_cloud(self):
+        # init cladding parameters
+        self.Clad_Params = CladParams(1,                     # clad height (mm)
+                                10,                     # clad width  (mm)
+                                5,                     # max clad step (mm)  (clads overlap is considered)
+                                0,                     # clad orientation (degrees)
+                                0,                # clad cross hatching ( enable or disable )
+                                0,                     # layer offset (e.g. 0.5) (0-1)
+                                3                     # max laser defocus (mm)
+        )
+        self.reset_viewer()
+        # filename = "FBH.pcd"
+        filename, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Open Point Cloud", filter="3D Files (*.pcd *.ply)")
+        if filename != "":
+            # init wear class with pointcloud file
+            cloud = o3d.io.read_point_cloud(filename)
+            self.cloud = pv.PolyData(np.asarray(cloud.points))
+            self.plotter.add_points(self.cloud.elevation(), cmap="jet")
+
     def load_raw_mesh(self):
         self.reset_viewer()
-        # create mesh from points using Delaunay
-        points = self.rebuild.cloud_points()
-        self.wearMesh = WearMesh(points, self.rebuild.Clad_Params)
-        # plot mesh using Pyvista
-        triangles = self.wearMesh.Delaunay.simplices
-        threes = np.full(len(triangles),3)
-        triangles = np.column_stack((threes,triangles)).flatten()
-        self.raw_mesh = pv.PolyData(points, triangles)
+        self.Mesh = WearMesh(self.cloud.points, self.Clad_Params)
+        self.raw_mesh = pv.PolyData(*self.Mesh.get_raw())
         self.plotter.add_mesh(self.raw_mesh.elevation(), cmap="jet", show_edges=True)
 
     def load_slice_mesh(self):
         self.reset_viewer()
-        self.wearMesh.generate_slices()
-        layer_points = self.wearMesh.reconstructed_vertices
-        layer_triangles = self.wearMesh.reconstructed_faces
-        for i in range(len(layer_points)):
-            triangles = layer_triangles[i]
-            threes = np.full(len(triangles),3)
-            triangles = np.column_stack((threes,triangles)).flatten()
-            self.slice_mesh = pv.PolyData(layer_points[i], triangles)
+        self.Mesh.generate_slices()
+        # display each layer
+        for i in range(self.Mesh.layers):
+            self.slice_mesh = pv.PolyData(*self.Mesh.get_slice_layer(i))
             self.plotter.add_mesh(self.slice_mesh.elevation(), color=np.random.rand(3,), show_edges=True)
 
     def thread(self):
@@ -141,26 +155,16 @@ class MyMainWindow(MainWindow):
     def generate_paths(self):
         print("Processing")
         start = time.time()
-        # get path and normal data
-        self.Paths = WearPath(self.wearMesh, self.wearMesh.Clad_Params)  
-        # paths, normals = self.load_test_data() # SAVED CSV DATA
+        # generate paths
+        self.Paths = WearPath(self.Mesh, self.Mesh.Clad_Params)  
         end = time.time()
         print(end-start, "seconds")
 
     @Slot()
     def plot_paths_normals(self):
         self.reset_viewer()
-        # print("Processing")
-        # start = time.time()
-        # # get path and normal data
-        # self.Paths = WearPath(self.wearMesh, self.wearMesh.Clad_Params) 
-        paths, _, normals = self.Paths.export()
-        
-        # # paths, normals = self.load_test_data() # SAVED CSV DATA
-        # end = time.time()
-        # print(end-start, "seconds")
-
         # Visualize data
+        paths, _, normals = self.Paths.export()
         for i in range(len(paths)):
             color = np.random.rand(3,)
             for j in range(len(paths[i])):
@@ -183,10 +187,14 @@ class MyMainWindow(MainWindow):
 
                     self.plotter.add_mesh(spline.arrows, color=1-color, line_width=5)
                     self.plotter.add_mesh(spline, smooth_shading=True, color=color, line_width=5)
-        print('done')
+    
+    def export_paths(self):
+        out = "test_output.csv"
+        out, _ = QtWidgets.QFileDialog.getSaveFileName(self, 'Save File', filter="CSV (*.csv)")
+        if out != "":
+            self.Paths.csv_export(out)
 
     def load_test_data(self):
-        import csv
         from multicell import MultiCell
 
         f = "test_output.csv"
@@ -241,7 +249,29 @@ class MyMainWindow(MainWindow):
                     group = int(float(row[1]))
                     layer = int(float(row[0]))
 
-        return paths, normals
+        self.reset_viewer()
+        for i in range(len(paths)):
+            color = np.random.rand(3,)
+            for j in range(len(paths[i])):
+                for q in range(paths[i].len_subset(j)):
+                    # Create path line
+                    points = paths[i].get(j,q)
+                    # spline = pv.Spline(points, len(points))#.tube(radius=0.05)
+                    spline = pv.PolyData()
+                    spline.points = points
+                    the_cell = np.arange(0, len(points), dtype=np.int_)
+                    the_cell = np.insert(the_cell, 0, len(points))
+                    spline.lines = the_cell
+                    # spline = spline.tube(radius=0.5)
+                    # spline.scale([1,1,10],inplace=True)
+
+                    # plot normal arrow at each point in opposite color
+                    scale = 1/3
+                    spline["vectors"] = normals[i].get(j,q) * scale
+                    spline.set_active_vectors("vectors")
+
+                    self.plotter.add_mesh(spline.arrows, color=1-color, line_width=5)
+                    self.plotter.add_mesh(spline, smooth_shading=True, color=color, line_width=5)
 
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)

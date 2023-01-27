@@ -9,6 +9,7 @@ from rigid3d import RigidTransform
 
 class WearMesh():
     def __init__(self, points, clad_params):
+        points = np.asarray(points)
         self.Center = np.mean(points, axis=0)
         self.Transformation = RigidTransform(trans=-self.Center)
         self.Clad_Params = clad_params
@@ -16,6 +17,7 @@ class WearMesh():
         # Create raw mesh from points using Delaunay method
         self.Delaunay = Delaunay(points[:,:2])
 
+        #FIXME: might be possible to eliminate the need for SciPy's Delaunay
         # cloud = pv.wrap(points)
         # surf = cloud.reconstruct_surface()
         # faces = surf.faces.reshape((-1, 4))[:,1:]
@@ -24,8 +26,18 @@ class WearMesh():
         self.raw_BoundingBox = BoundingBox(points)
         self.raw_mesh = o3d.t.geometry.TriangleMesh(o3d.core.Tensor(points),
                             o3d.core.Tensor(np.int64(self.Delaunay.simplices)))
-        # self.raw_mesh = o3d.t.geometry.TriangleMesh(o3d.core.Tensor(points),
-        #                     o3d.core.Tensor(faces))
+
+    def format_triangles_pv(self, triangles):
+        threes = np.full(len(triangles),3)
+        return np.column_stack((threes,triangles)).flatten()
+
+    def get_raw(self):
+        return self.raw_vertices, self.format_triangles_pv(self.Delaunay.simplices)
+
+    def get_slice_layer(self, idx):
+        points = self.reconstructed_vertices[idx]
+        triangles = self.reconstructed_faces[idx]
+        return points, self.format_triangles_pv(triangles)
 
     def calc_layer_step(self, edge, clad_height):
         #CALC_LAYER_STEP Calculate the layer step distance, and how many layer will fit in
@@ -101,6 +113,7 @@ class WearMesh():
         self.reconstructed_BoundingBoxes = boxes
         self.Clad_Params.CAL_LAYER_STEP = cal_layer_step 
         self.Clad_Params.LAYERS = nlayers 
+        self.layers = nlayers
 
     def slice_mesh(self, boxes, nlayers):
         #SLICEMESH returns the slices of a mesh, sliced using plane of a box.

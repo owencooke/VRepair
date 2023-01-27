@@ -1,3 +1,4 @@
+import csv
 import numpy as np
 from math import radians, ceil, floor
 from skspatial.objects import Plane, Line
@@ -360,6 +361,42 @@ class WearPath():
     def export(self):
         # NOTE: can use unused fcns below for converting exported coord types
         return self.Paths, self.Depths, self.Normals
+
+    # export paths to CSV
+    def csv_export(self, outfile):
+        # get path values according to system/coord type
+        paths, depths, normals = self.export()
+
+        # Create CSV output file
+        header = ['layer_number', 'group', 'point_code','point_depth', 'X','Y','Z','Nx','Ny','Nz']
+        with open(outfile, 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(header)
+
+            for layer in range(len(paths)):
+                for g in range(len(paths[layer])):
+                    for p in range(paths[layer].len_subset(g)):
+                        points = paths[layer].get(g,p)
+                        # depth is the distance from point to top plane of bounding box.
+                        depth = depths[layer].get(g,p)
+                        normal = normals[layer].get(g,p)
+                        # path should not be less than two points
+                        if points.shape[0] >= 2:
+                            # Format info and write to CSV row
+                            for i in range(len(points)):
+                                # start of path
+                                if i == 0:
+                                    code = 0
+                                # end of path
+                                elif i == len(points) - 1:
+                                    code = 1 # end of path
+                                # intermediate point
+                                else:
+                                    code = 2
+                                row = np.concatenate(([layer], [g], [code], depth[i], points[i], normal[i]))
+                                writer.writerow(list(row))
+
+        print('Paths are exported as:', outfile)
 
 
 #########################################################################

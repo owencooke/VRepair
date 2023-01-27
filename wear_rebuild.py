@@ -11,6 +11,12 @@ from wear_path import WearPath
 '''
 A program for generating toolpaths for the repairing process of 
 a wear using metal deposition modeling process.
+
+NOTE: this program has now been DEPRECATED in favour of refactoring
+and incorporating the functionality into a Qt GUI. This file remains useful for
+running the program without a GUI and showing results in Matplotlib. 
+Note that compatibility won't be maintained with wear_path and wear_mesh
+from January 27, 2023 forward
 '''
 class WearRebuild(): 
     def __init__(self, filename):

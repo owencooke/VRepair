@@ -8,13 +8,35 @@ from pyvistaqt import QtInteractor, MainWindow
 # Setting the Qt bindings for QtPy
 import os
 os.environ["QT_API"] = "pyside6"
+
 from qtpy import QtWidgets
+from qtpy.QtCore import QThreadPool, QRunnable, Signal, Slot, QObject
 
 from wear_rebuild import WearRebuild
 from wear_mesh import WearMesh
+from wear_path import WearPath
 
+''' This class runs functions in a separate Python thread than the one
+running the main GUI, so that the GUI does not freeze. '''
+class MyEmitter(QObject):
+    # setting up custom signal
+    finished = Signal()
+
+class Thread(QRunnable):
+    def __init__(self, function, *args, **kwargs):
+        super(Thread, self).__init__()
+        self.function = function
+        self.args = args
+        self.kwargs = kwargs
+        self.emitter = MyEmitter()
+
+    def run(self):
+        self.function(*self.args, **self.kwargs)
+        self.emitter.finished.emit()
+
+
+''' Qt Widget Application '''
 class MyMainWindow(MainWindow):
-
     def __init__(self, parent=None, show=True):
         QtWidgets.QMainWindow.__init__(self, parent)
 
@@ -36,21 +58,35 @@ class MyMainWindow(MainWindow):
         fileMenu = mainMenu.addMenu('File')
         meshMenu = mainMenu.addMenu('Repair')
 
-        # add point cloud load button
+        # point cloud load button
         loadButton = QtWidgets.QAction('Load PointCloud', self)
         loadButton.triggered.connect(self.load_cloud)
         fileMenu.addAction(loadButton)
 
-        # add exit app button
+        # exit app button
         exitButton = QtWidgets.QAction('Exit', self)
         exitButton.setShortcut('Ctrl+Q')
         exitButton.triggered.connect(self.close)
         fileMenu.addAction(exitButton)
 
-        # add mesh gen button
+        # mesh gen button
         triangleButton = QtWidgets.QAction('Triangulate Mesh', self)
         triangleButton.triggered.connect(self.load_raw_mesh)
         meshMenu.addAction(triangleButton)
+
+        # mesh slice button
+        sliceButton = QtWidgets.QAction('Slice Mesh', self)
+        sliceButton.triggered.connect(self.load_slice_mesh)
+        meshMenu.addAction(sliceButton)
+
+        # path generation button
+        pathButton = QtWidgets.QAction('Generate Toolpaths', self)
+        pathButton.triggered.connect(self.thread)
+        meshMenu.addAction(pathButton)
+
+        # threading for long path generation
+        self.threadpool = QThreadPool()
+        self.threadpool.setExpiryTimeout(1)
 
         if show:
             self.show()
@@ -82,18 +118,47 @@ class MyMainWindow(MainWindow):
         triangles = self.wearMesh.Delaunay.simplices
         threes = np.full(len(triangles),3)
         triangles = np.column_stack((threes,triangles)).flatten()
-        self.mesh = pv.PolyData(points, triangles)
-        self.plotter.add_mesh(self.mesh.elevation(), cmap="jet")
+        self.raw_mesh = pv.PolyData(points, triangles)
+        self.plotter.add_mesh(self.raw_mesh.elevation(), cmap="jet", show_edges=True)
 
-    def plot(self):
+    def load_slice_mesh(self):
         self.reset_viewer()
+        self.wearMesh.generate_slices()
+        layer_points = self.wearMesh.reconstructed_vertices
+        layer_triangles = self.wearMesh.reconstructed_faces
+        for i in range(len(layer_points)):
+            triangles = layer_triangles[i]
+            threes = np.full(len(triangles),3)
+            triangles = np.column_stack((threes,triangles)).flatten()
+            self.slice_mesh = pv.PolyData(layer_points[i], triangles)
+            self.plotter.add_mesh(self.slice_mesh.elevation(), color=np.random.rand(3,), show_edges=True)
+
+    def thread(self):
+        thread = Thread(self.generate_paths)
+        thread.emitter.finished.connect(self.plot_paths_normals)
+        self.threadpool.start(thread)
+
+    def generate_paths(self):
         print("Processing")
         start = time.time()
         # get path and normal data
-        # paths, normals = self.wear() # WEAR PROGRAM
-        paths, normals = self.load_test_data() # SAVED CSV DATA
+        self.Paths = WearPath(self.wearMesh, self.wearMesh.Clad_Params)  
+        # paths, normals = self.load_test_data() # SAVED CSV DATA
         end = time.time()
         print(end-start, "seconds")
+
+    @Slot()
+    def plot_paths_normals(self):
+        self.reset_viewer()
+        # print("Processing")
+        # start = time.time()
+        # # get path and normal data
+        # self.Paths = WearPath(self.wearMesh, self.wearMesh.Clad_Params) 
+        paths, _, normals = self.Paths.export()
+        
+        # # paths, normals = self.load_test_data() # SAVED CSV DATA
+        # end = time.time()
+        # print(end-start, "seconds")
 
         # Visualize data
         for i in range(len(paths)):
@@ -112,12 +177,13 @@ class MyMainWindow(MainWindow):
                     # spline.scale([1,1,10],inplace=True)
 
                     # plot normal arrow at each point in opposite color
-                    scale = 2
+                    scale = 1/3
                     spline["vectors"] = normals[i].get(j,q) * scale
                     spline.set_active_vectors("vectors")
 
-                    self.plotter.add_mesh(spline.arrows, lighting=False, color=1-color)
+                    self.plotter.add_mesh(spline.arrows, color=1-color, line_width=5)
                     self.plotter.add_mesh(spline, smooth_shading=True, color=color, line_width=5)
+        print('done')
 
     def load_test_data(self):
         import csv
@@ -176,12 +242,6 @@ class MyMainWindow(MainWindow):
                     layer = int(float(row[0]))
 
         return paths, normals
-
-    def wear(self):
-        # Run wear rebuild program
-        model = WearRebuild('FBH.pcd')
-        model.run()
-        return model.Paths.Paths, model.Paths.Normals
 
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)

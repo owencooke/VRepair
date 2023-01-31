@@ -284,10 +284,10 @@ class WearPath():
                     inds1 = self.ismembertol(temp, path[0], rel_tol) # first point
                     inds2 = self.ismembertol(temp, path[-1],rel_tol) # last point
                     if sum(inds1) == 0:
-                        temp = np.append(temp, path[0], axis=0)
+                        temp = np.append(temp, [path[0]], axis=0)
                 
                     if sum(inds2) == 0:
-                        temp = np.append(temp, path[-1], axis=0)
+                        temp = np.append(temp, [path[-1]], axis=0)
                 
                     grouped_path.append(temp) # grouping connected paths
             

@@ -17,10 +17,13 @@ class WearMesh():
         # Create raw mesh from points using Delaunay method
         self.Delaunay = Delaunay(points[:,:2])
 
-        #FIXME: might be possible to eliminate the need for SciPy's Delaunay
-        # cloud = pv.wrap(points)
+        # # #FIXME: might be possible to eliminate the need for SciPy's Delaunay
+        # cloud = pv.PolyData(points)
         # surf = cloud.reconstruct_surface()
         # faces = surf.faces.reshape((-1, 4))[:,1:]
+        # points = np.asarray(surf.points, dtype=np.float32)
+        # self.raw_mesh = o3d.t.geometry.TriangleMesh(o3d.core.Tensor(points),
+        #                     o3d.core.Tensor(np.int64(faces)))
 
         self.raw_vertices = points
         self.raw_BoundingBox = BoundingBox(points)
@@ -32,7 +35,7 @@ class WearMesh():
         return np.column_stack((threes,triangles)).flatten()
 
     def get_raw(self):
-        return self.raw_vertices, self.format_triangles_pv(self.Delaunay.simplices)
+        return self.raw_vertices, self.format_triangles_pv(self.raw_mesh.triangle.indices.numpy())
 
     def get_slice_layer(self, idx):
         points = self.reconstructed_vertices[idx]
@@ -169,7 +172,5 @@ class WearMesh():
         proj = np.zeros((len(mesh_vertices), 3))
         for idx, v in enumerate(mesh_vertices):
             # Project each vertex onto plane using scikit-spatial
-            if np.nan in v:
-                print()
             proj[idx] = plane.project_point(v)
         return proj

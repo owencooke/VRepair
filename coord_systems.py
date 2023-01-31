@@ -22,13 +22,32 @@ def convert_coords(points, init, final):
     return points
 
 def cyl_to_cart(points):
+    # if len(points.shape) == 1:
+    #     # Single point
+    #     r = points[0]
+    #     theta = points[1]
+    # else:
+    #     r = points[:,0]
+    #     theta = points[:,1]
+
+    # # Calculate x and y arrays
+    # x = r * np.cos(theta)
+    # y = r * np.sin(theta)
+
+    # # Multiply by conversion factors and return
+    # if len(points.shape) == 1:
+    #     return np.array((x, y, points[2]))
+    # else:
+    #     return np.column_stack((x, y, points[:,2]))
+
+    #NOTE: discrepancy between cylindrical format order (theta, z, r in FCD.pcd)
     if len(points.shape) == 1:
         # Single point
-        r = points[0]
-        theta = points[1]
+        r = points[2]
+        theta = points[0]
     else:
-        r = points[:,0]
-        theta = points[:,1]
+        r = points[:,2]
+        theta = points[:,0]
 
     # Calculate x and y arrays
     x = r * np.cos(theta)
@@ -36,9 +55,9 @@ def cyl_to_cart(points):
 
     # Multiply by conversion factors and return
     if len(points.shape) == 1:
-        return np.array((x, y, points[2]))
+        return np.array((x, y, points[1]))
     else:
-        return np.column_stack((x, y, points[:,2]))
+        return np.column_stack((x, y, points[:,1]))
 
 def cart_to_cyl(points):
     x = points[:,0]

@@ -40,9 +40,11 @@ class MyMainWindow(MainWindow):
         QtWidgets.QMainWindow.__init__(self, parent)
         self.setWindowTitle("Wear Repair (SMART LAB) BETA")
 
-        self.viewer()
+        self.frame, self.plotter = self.get_3D_frame()
+        self.setCentralWidget(self.frame)
         self.menus()
-        self.dock()
+        self.clad_dock()
+        self.cart_viewer()
 
         # Status Bar
         self.progressBar = QtWidgets.QProgressBar()
@@ -55,11 +57,18 @@ class MyMainWindow(MainWindow):
         if show:
             self.show()
 
+    # Pass functions to run in thread/after thread
+    def thread(self, start, after=None):
+        thread = Thread(start)
+        thread.emitter.finished.connect(after)
+        self.threadpool.start(thread)
+
     def menus(self):
         # create topbar menu
         mainMenu = self.menuBar()
         fileMenu = mainMenu.addMenu('File')
         meshMenu = mainMenu.addMenu('Repair')
+        viewMenu = mainMenu.addMenu("View")
 
         # point cloud load buttons
         loadButton = QtWidgets.QAction('Load PointCloud', self)
@@ -83,12 +92,12 @@ class MyMainWindow(MainWindow):
 
         # mesh slice button
         sliceButton = QtWidgets.QAction('Slice Mesh', self)
-        sliceButton.triggered.connect(self.load_slice_mesh)
+        sliceButton.triggered.connect(lambda: self.thread(self.load_slices, self.plot_slices))
         meshMenu.addAction(sliceButton)
 
         # path generation button
         pathButton = QtWidgets.QAction('Generate Toolpaths', self)
-        pathButton.triggered.connect(self.thread) #THREADME
+        pathButton.triggered.connect(lambda: self.thread(self.generate_paths, self.plot_paths_normals))
         meshMenu.addAction(pathButton)
 
         # export path to CSV button
@@ -96,21 +105,29 @@ class MyMainWindow(MainWindow):
         exportButton.triggered.connect(self.export_paths)
         meshMenu.addAction(exportButton)
 
-    def viewer(self):
+        # reset camera
+        resetButton = QtWidgets.QAction('Reset Camera', self)
+        resetButton.setShortcut('Ctrl+R')
+        resetButton.triggered.connect(self.plotter.reset_camera)
+        viewMenu.addAction(resetButton)
+
+    def get_3D_frame(self):
         # create the frame
-        self.frame = QtWidgets.QFrame()
+        frame = QtWidgets.QFrame()
         vlayout = QtWidgets.QVBoxLayout()
 
         # add the pyvista interactor object
-        self.plotter = QtInteractor(self.frame)
-        self.plotter.add_axes()
-        vlayout.addWidget(self.plotter.interactor)
-        self.signal_close.connect(self.plotter.close)
+        plotter = QtInteractor(frame) #shape=
+        plotter.add_axes()
+        # self.plotter.subplot(0,1)
+        # self.plotter.add_axes()
+        vlayout.addWidget(plotter.interactor)
+        self.signal_close.connect(plotter.close)
 
-        self.frame.setLayout(vlayout)
-        self.setCentralWidget(self.frame)
+        frame.setLayout(vlayout)
+        return frame, plotter
 
-    def dock(self):
+    def clad_dock(self):
         # Dock
         self.dock = QtWidgets.QDockWidget(parent=self, flags=Qt.WindowFlags())
         self.dock.setWindowTitle("Cladding Parameters")
@@ -128,15 +145,29 @@ class MyMainWindow(MainWindow):
                     3                   # max laser defocus
         ] 
         for i in range(len(labels)):
-            # dockLayout.addWidget(QtWidgets.QLabel(labels[i]))
             field = QtWidgets.QDoubleSpinBox()
             field.setValue(defaults[i])
-            # dockLayout.addWidget(field)
             dockLayout.addRow(labels[i], field)
     
         self.dockedWidget = QtWidgets.QWidget()
         self.dock.setWidget(self.dockedWidget)
         self.dockedWidget.setLayout(dockLayout)
+
+    def cart_viewer(self):
+        # Dock
+        dock = QtWidgets.QDockWidget(parent=self, flags=Qt.WindowFlags())
+        dock.setWindowTitle("Cartesian Viewer")
+        self.addDockWidget(Qt.LeftDockWidgetArea, dock)
+
+        # Add 3d frame to Layout
+        dockLayout = QtWidgets.QBoxLayout(QtWidgets.QBoxLayout.TopToBottom)
+        frame, self.cart_plotter = self.get_3D_frame()
+        dockLayout.addWidget(frame)
+
+        # add layout to dock
+        dockedWidget = QtWidgets.QWidget()
+        dock.setWidget(dockedWidget)
+        dockedWidget.setLayout(dockLayout)
 
     def reset_viewer(self):
         self.plotter.reset_camera()
@@ -153,6 +184,14 @@ class MyMainWindow(MainWindow):
             self.plotter.add_points(self.cloud.elevation(), cmap="jet")
             self.update_status('Loaded point cloud from: ' + fin)
 
+            # plot cart
+            from coord_systems import cyl_to_cart
+            self.cart_plotter.clear()
+            points = np.asarray(cloud.points)
+            conv_points = cyl_to_cart(points)
+            cloud = pv.PolyData(conv_points)
+            self.cart_plotter.add_points(cloud.elevation(), cmap="jet")
+
     def get_clad_params(self):
         fields = self.dockedWidget.findChildren(QtWidgets.QDoubleSpinBox)
         params = list(widget.value() for widget in fields)
@@ -165,20 +204,17 @@ class MyMainWindow(MainWindow):
         self.plotter.add_mesh(self.raw_mesh.elevation(), cmap="jet", show_edges=True)
         self.update_status('Generated mesh with ' + str(len(self.Mesh.Delaunay.simplices)) + ' triangles.')
 
-    def load_slice_mesh(self):
-        self.reset_viewer()
+    def load_slices(self):
         self.update_status('Slicing mesh...')
         self.Mesh.generate_slices()
+        self.update_status(str(self.Mesh.layers) + ' layers generated.')
+    
+    def plot_slices(self):
+        self.reset_viewer()
         # display each layer
         for i in range(self.Mesh.layers):
             self.slice_mesh = pv.PolyData(*self.Mesh.get_slice_layer(i))
             self.plotter.add_mesh(self.slice_mesh.elevation(), color=np.random.rand(3,), show_edges=True)
-        self.update_status(str(self.Mesh.layers) + ' layers generated.')
-
-    def thread(self):
-        thread = Thread(self.generate_paths)
-        thread.emitter.finished.connect(self.plot_paths_normals)
-        self.threadpool.start(thread)
 
     def generate_paths(self):
         # generate paths

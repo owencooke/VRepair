@@ -14,6 +14,7 @@ from qtpy.QtCore import QThreadPool, QRunnable, Signal, Slot, QObject, Qt
 from clad_params import CladParams
 from wear_mesh import WearMesh
 from wear_path import WearPath
+from coord_systems import cyl_to_cart
 
 ''' This class runs functions in a separate Python thread than the one
 running the main GUI, so that the GUI does not freeze. '''
@@ -62,6 +63,13 @@ class MyMainWindow(MainWindow):
         thread = Thread(start)
         thread.emitter.finished.connect(after)
         self.threadpool.start(thread)
+    
+    def update_status(self, str):
+        self.statusBar().showMessage(str)
+
+    @Slot(int, int)
+    def update_progress(self, layer, total):
+        self.progressBar.setValue(100 * layer/total)
 
     def menus(self):
         # create topbar menu
@@ -117,14 +125,12 @@ class MyMainWindow(MainWindow):
         vlayout = QtWidgets.QVBoxLayout()
 
         # add the pyvista interactor object
-        plotter = QtInteractor(frame) #shape=
+        plotter = QtInteractor(frame)
         plotter.add_axes()
-        # self.plotter.subplot(0,1)
-        # self.plotter.add_axes()
         vlayout.addWidget(plotter.interactor)
         self.signal_close.connect(plotter.close)
-
         frame.setLayout(vlayout)
+
         return frame, plotter
 
     def clad_dock(self):
@@ -175,22 +181,22 @@ class MyMainWindow(MainWindow):
         self.plotter.clear()
 
     def load_cloud(self):
-        self.reset_viewer()
         fin, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Open Point Cloud", filter="3D Files (*.pcd *.ply)")
         if fin != "":
-            # init wear class with pointcloud file
             cloud = o3d.io.read_point_cloud(fin)
-            self.cloud = pv.PolyData(np.asarray(cloud.points))
-            self.plotter.add_points(self.cloud.elevation(), cmap="jet")
-            self.update_status('Loaded point cloud from: ' + fin)
-
-            # plot cart
-            from coord_systems import cyl_to_cart
-            self.cart_plotter.clear()
             points = np.asarray(cloud.points)
-            conv_points = cyl_to_cart(points)
-            cloud = pv.PolyData(conv_points)
+
+            # plot PC in main cylindrical viewer
+            self.reset_viewer()
+            self.cloud = pv.PolyData(points)
+            self.plotter.add_points(self.cloud.elevation(), cmap="jet")
+
+            # plot PC in cartesian mini viewer
+            self.cart_plotter.clear()
+            cloud = pv.PolyData(cyl_to_cart(points))
             self.cart_plotter.add_points(cloud.elevation(), cmap="jet")
+
+            self.update_status('Loaded point cloud from: ' + fin)
 
     def get_clad_params(self):
         fields = self.dockedWidget.findChildren(QtWidgets.QDoubleSpinBox)
@@ -206,9 +212,11 @@ class MyMainWindow(MainWindow):
 
     def load_slices(self):
         self.update_status('Slicing mesh...')
+        self.Mesh.emitter.progress.connect(self.update_progress)
         self.Mesh.generate_slices()
         self.update_status(str(self.Mesh.layers) + ' layers generated.')
     
+    @Slot()
     def plot_slices(self):
         self.reset_viewer()
         # display each layer
@@ -227,39 +235,31 @@ class MyMainWindow(MainWindow):
         self.paths, _, self.normals = self.Paths.export()
         self.update_status('Path planning complete.')
 
-    def update_status(self, str):
-        self.statusBar().showMessage(str)
-
-    @Slot(int, int)
-    def update_progress(self, layer, total):
-        self.progressBar.setValue(100 * layer/total)
-
     @Slot()
     def plot_paths_normals(self):
         self.reset_viewer()
-        # Visualize data
         for i in range(len(self.paths)):
+            # Random color for each layer
             color = np.random.rand(3,)
             for j in range(len(self.paths[i])):
                 for q in range(self.paths[i].len_subset(j)):
-                    # Create path line
                     points = self.paths[i].get(j,q)
-                    # spline = pv.Spline(points, len(points))#.tube(radius=0.05)
-                    spline = pv.PolyData()
-                    spline.points = points
+
+                    # Create spline to represent path
+                    spline = pv.PolyData(points)
                     the_cell = np.arange(0, len(points), dtype=np.int_)
                     the_cell = np.insert(the_cell, 0, len(points))
                     spline.lines = the_cell
-                    # spline = spline.tube(radius=0.5)
-                    # spline.scale([1,1,10],inplace=True)
 
-                    # plot normal arrow at each point in opposite color
+                    # Assign normal vectors to spline
                     scale = 1/3
                     spline["vectors"] = self.normals[i].get(j,q) * scale
                     spline.set_active_vectors("vectors")
 
+                    # plot paths and normals in opposite colors
                     self.plotter.add_mesh(spline.arrows, color=1-color, line_width=5)
                     self.plotter.add_mesh(spline, smooth_shading=True, color=color, line_width=5)
+
         self.progressBar.reset()
     
     def export_paths(self):

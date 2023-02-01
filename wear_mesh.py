@@ -3,9 +3,14 @@ from scipy.spatial import Delaunay
 import open3d as o3d
 import numpy as np
 import pyvista as pv
+from qtpy.QtCore import Signal, QObject
 
 from plane import BoundingBox
 from rigid3d import RigidTransform
+
+class Emitter(QObject):
+    # setting up custom signal
+    progress = Signal(int, int)
 
 class WearMesh():
     def __init__(self, points, clad_params):
@@ -29,6 +34,8 @@ class WearMesh():
         self.raw_BoundingBox = BoundingBox(points)
         self.raw_mesh = o3d.t.geometry.TriangleMesh(o3d.core.Tensor(points),
                             o3d.core.Tensor(np.int64(self.Delaunay.simplices)))
+
+        self.emitter = Emitter()
 
     def format_triangles_pv(self, triangles):
         threes = np.full(len(triangles),3)
@@ -162,6 +169,9 @@ class WearMesh():
             # NOTE: can only combine legacy o3d Triangle meshes, not o3d.t
             mesh = proj_mesh + upper.to_legacy()
             mesh = o3d.t.geometry.TriangleMesh.from_legacy(mesh)
+
+            # update progress bar
+            self.emitter.progress.emit(layer+1, nlayers-1)
 
         slice_vertices.append(mesh.vertex.positions.numpy())
         slice_faces.append(mesh.triangle.indices.numpy())

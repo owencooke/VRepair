@@ -16,6 +16,16 @@ from wear_mesh import WearMesh
 from wear_path import WearPath
 from coord_systems import cyl_to_cart
 
+CLADDING_DEFAULTS = {
+    "Clad Height"           : 1,        # (mm) 
+    "Clad Width"            : 10,       # (mm) 
+    "Max Clad Step"         : 5,        # (mm)  (clads overlap is considered)
+    "Clad Orientation"      : 0,        # degrees
+    "Clad Cross Hatching"   : 0,        # enable or disable
+    "Layer Offset"          : 0,        # (0-1)
+    "Max Laser Defocus"     : 3
+}
+
 ''' This class runs functions in a separate Python thread than the one
 running the main GUI, so that the GUI does not freeze. '''
 class MyEmitter(QObject):
@@ -39,13 +49,15 @@ class Thread(QRunnable):
 class MyMainWindow(MainWindow):
     def __init__(self, parent=None, show=True):
         QtWidgets.QMainWindow.__init__(self, parent)
-        self.setWindowTitle("Wear Repair (SMART LAB) BETA")
+        self.setWindowTitle("VRepair (SMART LAB) BETA")
 
+        # Init UI
         self.frame, self.plotter = self.get_3D_frame()
         self.setCentralWidget(self.frame)
-        self.menus()
-        self.clad_dock()
-        self.cart_viewer()
+        self.createMainDock()
+        self.createCartesianDock()
+        self.createMenus()
+        # self.cartDock.setMinimumHeight(self.height() - self.mainDock.height() - 300)
 
         # Status Bar
         self.progressBar = QtWidgets.QProgressBar()
@@ -71,53 +83,44 @@ class MyMainWindow(MainWindow):
     def update_progress(self, layer, total):
         self.progressBar.setValue(100 * layer/total)
 
-    def menus(self):
-        # create topbar menu
+    def createMenus(self):
         mainMenu = self.menuBar()
-        fileMenu = mainMenu.addMenu('File')
-        meshMenu = mainMenu.addMenu('Repair')
-        viewMenu = mainMenu.addMenu("View")
 
-        # point cloud load buttons
+        # FILE
+        fileMenu = mainMenu.addMenu('File')
+        
         loadButton = QtWidgets.QAction('Load PointCloud', self)
         loadButton.triggered.connect(self.load_cloud)
         fileMenu.addAction(loadButton)
 
-        csvButton = QtWidgets.QAction('Load From CSV', self)
+        csvButton = QtWidgets.QAction('Load Paths From CSV', self)
         csvButton.triggered.connect(self.csv_load)
         fileMenu.addAction(csvButton)
 
-        # exit app button
+        exportButton = QtWidgets.QAction('Export Paths to CSV', self)
+        exportButton.triggered.connect(self.export_paths)
+        fileMenu.addAction(exportButton)
+
         exitButton = QtWidgets.QAction('Exit', self)
         exitButton.setShortcut('Ctrl+Q')
         exitButton.triggered.connect(self.close)
         fileMenu.addAction(exitButton)
 
-        # mesh gen button
-        triangleButton = QtWidgets.QAction('Triangulate Mesh', self)
-        triangleButton.triggered.connect(self.load_raw_mesh)
-        meshMenu.addAction(triangleButton)
+        # VIEW
+        viewMenu = mainMenu.addMenu("View")
 
-        # mesh slice button
-        sliceButton = QtWidgets.QAction('Slice Mesh', self)
-        sliceButton.triggered.connect(lambda: self.thread(self.load_slices, self.plot_slices))
-        meshMenu.addAction(sliceButton)
-
-        # path generation button
-        pathButton = QtWidgets.QAction('Generate Toolpaths', self)
-        pathButton.triggered.connect(lambda: self.thread(self.generate_paths, self.plot_paths_normals))
-        meshMenu.addAction(pathButton)
-
-        # export path to CSV button
-        exportButton = QtWidgets.QAction('Export Toolpaths to CSV', self)
-        exportButton.triggered.connect(self.export_paths)
-        meshMenu.addAction(exportButton)
-
-        # reset camera
         resetButton = QtWidgets.QAction('Reset Camera', self)
         resetButton.setShortcut('Ctrl+R')
         resetButton.triggered.connect(self.plotter.reset_camera)
         viewMenu.addAction(resetButton)
+
+        restoreMainDock = self.mainDock.toggleViewAction()
+        restoreMainDock.setText("Show " + restoreMainDock.text())
+        viewMenu.addAction(restoreMainDock)
+
+        restoreCartDock = self.cartDock.toggleViewAction()
+        restoreCartDock.setText("Show " + restoreCartDock.text())
+        viewMenu.addAction(restoreCartDock)
 
     def get_3D_frame(self):
         # create the frame
@@ -133,47 +136,90 @@ class MyMainWindow(MainWindow):
 
         return frame, plotter
 
-    def clad_dock(self):
-        # Dock
-        self.dock = QtWidgets.QDockWidget(parent=self, flags=Qt.WindowFlags())
-        self.dock.setWindowTitle("Cladding Parameters")
-        self.addDockWidget(Qt.LeftDockWidgetArea, self.dock)
-        # dockLayout = QtWidgets.QBoxLayout(QtWidgets.QBoxLayout.TopToBottom)
-        dockLayout = QtWidgets.QFormLayout()
-        labels = ["Clad Height", "Clad Width", "Max Clad Step", "Clad Orientation",
-                    "Clad Cross Hatching", "Layer Offset", "Max Laser Defocus"]
-        defaults = [1,                     # clad height (mm)
-                    10,                     # clad width  (mm)
-                    5,                     # max clad step (mm)  (clads overlap is considered)
-                    0,                     # clad orientation (degrees)
-                    0,                # clad cross hatching ( enable or disable )
-                    0,                     # layer offset (e.g. 0.5) (0-1)
-                    3                   # max laser defocus
-        ] 
-        for i in range(len(labels)):
-            field = QtWidgets.QDoubleSpinBox()
-            field.setValue(defaults[i])
-            dockLayout.addRow(labels[i], field)
-    
-        self.dockedWidget = QtWidgets.QWidget()
-        self.dock.setWidget(self.dockedWidget)
-        self.dockedWidget.setLayout(dockLayout)
+    def toggleGroup(self, ctrl):
+        state = ctrl.isChecked()
+        if state:
+            ctrl.setFixedHeight(ctrl.sizeHint().height())
+        else:
+            ctrl.setFixedHeight(30)
 
-    def cart_viewer(self):
-        # Dock
-        dock = QtWidgets.QDockWidget(parent=self, flags=Qt.WindowFlags())
-        dock.setWindowTitle("Cartesian Viewer")
-        self.addDockWidget(Qt.LeftDockWidgetArea, dock)
+    def createCladBtnGroup(self):
+        # create cladding buttons
+        layout = QtWidgets.QFormLayout()
+        for name, value in CLADDING_DEFAULTS.items():
+            field = QtWidgets.QDoubleSpinBox()
+            field.setValue(value)
+            layout.addRow(name, field)
+    
+        group = QtWidgets.QGroupBox("Show Cladding Parameters")
+        group.setCheckable(True)
+        group.toggled.connect(lambda: self.toggleGroup(group))
+        group.setLayout(layout)
+        return group
+    
+    def createRepairBtnGroup(self):
+        # create buttons
+        triangulate = QtWidgets.QPushButton('Triangulate Mesh')
+        triangulate.clicked.connect(self.load_raw_mesh)
+        triangulate.setEnabled(False)
+
+        slice = QtWidgets.QPushButton('Slice Mesh')
+        slice.clicked.connect(lambda: self.thread(self.load_slices, self.plot_slices))
+        slice.setEnabled(False)
+
+        genPaths = QtWidgets.QPushButton('Generate Toolpaths')
+        genPaths.clicked.connect(lambda: self.thread(self.generate_paths, self.plot_paths_normals))
+        genPaths.setEnabled(False)
+
+        # add buttons to layout
+        layout = QtWidgets.QVBoxLayout()
+        layout.addWidget(triangulate)
+        layout.addWidget(slice)
+        layout.addWidget(genPaths)
+        layout.addStretch(1)
+
+        self.meshBtn = triangulate
+        self.sliceBtn = slice
+        self.genPathBtn = genPaths
+
+        group = QtWidgets.QGroupBox("Repair")
+        group.setLayout(layout)
+        return group
+
+    def createMainDock(self):
+        # create groups to be contained in the dock
+        self.cladButtons = self.createCladBtnGroup()
+        self.repairButtons = self.createRepairBtnGroup()
+
+        # add groups to a layout
+        layout = QtWidgets.QVBoxLayout()
+        layout.addWidget(self.cladButtons)
+        layout.addWidget(self.repairButtons)
+
+        # create docked window
+        self.mainDock = QtWidgets.QDockWidget(parent=self, flags=Qt.WindowFlags())
+        self.mainDock.setWindowTitle("Path Planning Controls")
+        w = QtWidgets.QWidget()
+        w.setLayout(layout)
+        self.mainDock.setWidget(w)
+
+        # add dock to main window
+        self.addDockWidget(Qt.LeftDockWidgetArea, self.mainDock)
+
+    def createCartesianDock(self):
+        self.cartDock = QtWidgets.QDockWidget(parent=self, flags=Qt.WindowFlags())
+        self.cartDock.setWindowTitle("Cartesian Viewer")
+        self.addDockWidget(Qt.LeftDockWidgetArea, self.cartDock)
 
         # Add 3d frame to Layout
-        dockLayout = QtWidgets.QBoxLayout(QtWidgets.QBoxLayout.TopToBottom)
         frame, self.cart_plotter = self.get_3D_frame()
-        dockLayout.addWidget(frame)
+        layout = QtWidgets.QBoxLayout(QtWidgets.QBoxLayout.TopToBottom)
+        layout.addWidget(frame)
 
         # add layout to dock
-        dockedWidget = QtWidgets.QWidget()
-        dock.setWidget(dockedWidget)
-        dockedWidget.setLayout(dockLayout)
+        w = QtWidgets.QWidget()
+        self.cartDock.setWidget(w)
+        w.setLayout(layout)
 
     def reset_viewer(self):
         self.plotter.reset_camera()
@@ -181,6 +227,9 @@ class MyMainWindow(MainWindow):
         self.plotter.clear()
 
     def load_cloud(self):
+        self.sliceBtn.setEnabled(False)
+        self.genPathBtn.setEnabled(False)
+        
         fin, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Open Point Cloud", filter="3D Files (*.pcd *.ply)")
         if fin != "":
             cloud = o3d.io.read_point_cloud(fin)
@@ -197,24 +246,28 @@ class MyMainWindow(MainWindow):
             self.cart_plotter.add_points(cloud.elevation(), cmap="jet")
 
             self.update_status('Loaded point cloud from: ' + fin)
+            self.meshBtn.setEnabled(True)
 
     def get_clad_params(self):
-        fields = self.dockedWidget.findChildren(QtWidgets.QDoubleSpinBox)
+        fields = self.cladButtons.findChildren(QtWidgets.QDoubleSpinBox)
         params = list(widget.value() for widget in fields)
         return CladParams(*params)
 
     def load_raw_mesh(self):
+        self.genPathBtn.setEnabled(False)
         self.reset_viewer()
         self.Mesh = WearMesh(self.cloud.points, self.get_clad_params())
         self.raw_mesh = pv.PolyData(*self.Mesh.get_raw())
         self.plotter.add_mesh(self.raw_mesh.elevation(), cmap="jet", show_edges=True)
         self.update_status('Generated mesh with ' + str(len(self.Mesh.Delaunay.simplices)) + ' triangles.')
+        self.sliceBtn.setEnabled(True)
 
     def load_slices(self):
         self.update_status('Slicing mesh...')
         self.Mesh.emitter.progress.connect(self.update_progress)
         self.Mesh.generate_slices()
         self.update_status(str(self.Mesh.layers) + ' layers generated.')
+        self.genPathBtn.setEnabled(True)
     
     @Slot()
     def plot_slices(self):

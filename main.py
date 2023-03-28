@@ -9,26 +9,24 @@ from pyvistaqt import QtInteractor, MainWindow
 import os
 os.environ["QT_API"] = "pyside6"
 from qtpy import QtWidgets
-from qtpy.QtCore import QThreadPool, QRunnable, Signal, Slot, QObject, Qt
+from qtpy.QtCore import QThreadPool, QRunnable, Signal, Slot, QObject
 import qdarktheme
 
-from clad_params import CladParams
+from clad_params import CladParams, CLADDING_DEFAULTS
 from wear_mesh import WearMesh
 from wear_path import WearPath
 from coord_systems import cyl_to_cart
 
-CLADDING_DEFAULTS = {
-    "Clad Height"           : 1,        # (mm) 
-    "Clad Width"            : 10,       # (mm) 
-    "Max Clad Step"         : 5,        # (mm)  (clads overlap is considered)
-    "Clad Orientation"      : 0,        # degrees
-    "Clad Cross Hatching"   : 0,        # enable or disable
-    "Layer Offset"          : 0,        # (0-1)
-    "Max Laser Defocus"     : 3
-}
+''' 
+Thread runs functions in a separate Python thread than the one
+running the main GUI, so that the GUI does not freeze. MyEmitter enables
+a signal to be emitted upon thread finish, so that you can connect functions.
 
-''' This class runs functions in a separate Python thread than the one
-running the main GUI, so that the GUI does not freeze. '''
+To use: 
+    1. my_thread = Thread(func_to_run)
+    2. (optional) my_thread.emitter.finished.connect(func_to_run_after)
+    3. Pass my_thread to `start` method of a QThreadpool instance
+'''
 class MyEmitter(QObject):
     # setting up custom signal
     finished = Signal()
@@ -45,23 +43,33 @@ class Thread(QRunnable):
         self.function(*self.args, **self.kwargs)
         self.emitter.finished.emit()
 
-
-''' Qt Widget Application '''
-class MyMainWindow(MainWindow):
-    def __init__(self, parent=None, show=True):
+'''
+Main QtPy Widget Application Window
+'''
+class VRepairWindow(MainWindow):
+    def __init__(self, parent=None):
         QtWidgets.QMainWindow.__init__(self, parent)
         self.setWindowTitle("VRepair (SMART LAB) BETA")
+        self.createUI()
 
-        # Create widgets to display
+        # create threadpool for long processes
+        self.threadpool = QThreadPool()
+        self.threadpool.setExpiryTimeout(1)
+
+        self.show()
+
+    ###################################################################
+    '''Initialize UI Methods'''
+    ###################################################################
+    def createUI(self):
+        # Create widgets to display on main window
         sidebar = self.createSidebar()
         frame3D, self.plotter = self.create3DPlot()
 
-        # Layout widgets horizontally
         layout = QtWidgets.QHBoxLayout()
         layout.addWidget(sidebar, stretch=1)
         layout.addWidget(frame3D, stretch=2)
 
-        # apply layout to main window
         main = QtWidgets.QWidget()
         main.setLayout(layout)
         self.setCentralWidget(main)
@@ -70,29 +78,9 @@ class MyMainWindow(MainWindow):
         self.createFileMenu()
         self.createViewMenu()
 
-        # Status Bar
+        # add permananent progress bar widget
         self.progressBar = QtWidgets.QProgressBar()
         self.statusBar().addPermanentWidget(self.progressBar)
-
-        # create threadpool for long processes
-        self.threadpool = QThreadPool()
-        self.threadpool.setExpiryTimeout(1)
-
-        if show:
-            self.show()
-
-    # Pass functions to run in thread/after thread
-    def thread(self, start, after=None):
-        thread = Thread(start)
-        thread.emitter.finished.connect(after)
-        self.threadpool.start(thread)
-    
-    def update_status(self, str):
-        self.statusBar().showMessage(str)
-
-    @Slot(int, int)
-    def update_progress(self, layer, total):
-        self.progressBar.setValue(100 * layer/total)
 
     def createSidebar(self):
         # Create sidebar items (use self if reference required later)
@@ -153,12 +141,6 @@ class MyMainWindow(MainWindow):
 
         return frame, plotter
 
-    def toggle_btn_group(self, ctrl):
-        if ctrl.isChecked():
-            ctrl.setFixedHeight(ctrl.sizeHint().height())
-        else:
-            ctrl.setFixedHeight(15)
-
     def createCladButtons(self):
         # create cladding buttons
         layout = QtWidgets.QFormLayout()
@@ -197,12 +179,48 @@ class MyMainWindow(MainWindow):
         group = QtWidgets.QGroupBox("Path Planning")
         group.setLayout(layout)
         return group
+    
+    ###################################################################
+    '''Backend helper methods'''
+    ###################################################################
 
+    # Toggles visibility of a button group
+    def toggle_btn_group(self, ctrl):
+        if ctrl.isChecked():
+            ctrl.setFixedHeight(ctrl.sizeHint().height())
+        else:
+            ctrl.setFixedHeight(15)
+
+    # Runs a threaded function (start). Optional run function (after) on completion
+    def thread(self, start, after=None):
+        thread = Thread(start)
+        thread.emitter.finished.connect(after)
+        self.threadpool.start(thread)
+    
+    # Displays message in status bar
+    def update_status(self, str):
+        self.statusBar().showMessage(str)
+
+    # Changes progress bar percentage
+    @Slot(int, int)
+    def update_progress(self, layer, total):
+        self.progressBar.setValue(100 * layer/total)
+
+    # creates CladParams struct from input values
+    def get_clad_params(self):
+        fields = self.cladButtons.findChildren(QtWidgets.QDoubleSpinBox)
+        params = list(widget.value() for widget in fields)
+        return CladParams(*params)
+
+    #FIXME: move me
     def reset_viewer(self):
         self.plotter.reset_camera()
         self.plotter.set_scale(zscale=10)
         self.plotter.clear()
 
+    ###################################################################
+    '''Backend functions (connected to buttons)'''
+    ###################################################################
     def load_cloud(self):
         self.sliceButton.setEnabled(False)
         self.pathsButton.setEnabled(False)
@@ -225,11 +243,6 @@ class MyMainWindow(MainWindow):
             self.update_status('Loaded point cloud from: ' + fin)
             self.meshButton.setEnabled(True)
 
-    def get_clad_params(self):
-        fields = self.cladButtons.findChildren(QtWidgets.QDoubleSpinBox)
-        params = list(widget.value() for widget in fields)
-        return CladParams(*params)
-
     def load_raw_mesh(self):
         self.pathsButton.setEnabled(False)
         self.reset_viewer()
@@ -239,23 +252,16 @@ class MyMainWindow(MainWindow):
         self.update_status('Generated mesh with ' + str(len(self.Mesh.Delaunay.simplices)) + ' triangles.')
         self.sliceButton.setEnabled(True)
 
+    # NOTE: threaded, can't update plotter from here
     def load_slices(self):
         self.update_status('Slicing mesh...')
         self.Mesh.emitter.progress.connect(self.update_progress)
         self.Mesh.generate_slices()
         self.update_status(str(self.Mesh.layers) + ' layers generated.')
         self.pathsButton.setEnabled(True)
-    
-    @Slot()
-    def plot_slices(self):
-        self.reset_viewer()
-        # display each layer
-        for i in range(self.Mesh.layers):
-            self.slice_mesh = pv.PolyData(*self.Mesh.get_slice_layer(i))
-            self.plotter.add_mesh(self.slice_mesh.elevation(), color=np.random.rand(3,), show_edges=True)
 
+    # NOTE: threaded, can't update plotter from here
     def generate_paths(self):
-        # generate paths
         self.Paths = WearPath(self.Mesh, self.Mesh.Clad_Params)
         self.Paths.emitter.progress.connect(self.update_progress)
         self.update_status('Generating clippers...')
@@ -264,6 +270,72 @@ class MyMainWindow(MainWindow):
         self.Paths.generate_paths_and_normals()
         self.paths, _, self.normals = self.Paths.export()
         self.update_status('Path planning complete.')
+
+    def export_paths(self):
+        fout, _ = QtWidgets.QFileDialog.getSaveFileName(self, 'Save File', filter="CSV (*.csv)")
+        if fout != "":
+            self.Paths.csv_export(fout)
+            self.update_status('Paths exported as: ' + fout)
+
+    def csv_load(self):
+        fin, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Path Data", filter="CSV (*.csv)")
+        if fin != "":
+            from multicell import MultiCell
+            paths = []
+            normals = []
+            with open(fin, 'r') as csvfile:
+                reader = csv.reader(csvfile)
+                p = []
+                n = []
+                path_cell = MultiCell()
+                norm_cell = MultiCell()
+                path_count = group = layer = 0
+                for idx, row in enumerate(reader):
+                    # ignore header row
+                    if idx != 0:
+                        # check for layer change
+                        if layer != int(float(row[0])):
+                            # store previous layer cell
+                            paths.append(path_cell)
+                            normals.append(norm_cell)
+                            # reset cells to empty
+                            path_cell = MultiCell()
+                            norm_cell = MultiCell()
+                        layer = int(float(row[0]))
+                        
+                        # check for group change
+                        if group != int(float(row[1])):
+                            path_count = 0
+                        group = int(float(row[1]))
+
+                        # store point and normal
+                        p.append(list(float(i) for i in row[4:7]))
+                        n.append(list(float(i) for i in row[7:]))
+
+                        # check if its last point in path
+                        if int(float(row[2])) == 1:
+                            # store path
+                            path_cell.set(np.array(p), group, path_count)
+                            norm_cell.set(np.array(n), group, path_count)
+                            # reset points/norms
+                            p = []
+                            n = []
+                            path_count += 1
+            self.paths = paths
+            self.normals = normals
+            self.plot_paths_normals()
+            self.update_status('Loaded paths from: ' + fin)
+    
+    ###################################################################
+    '''3D plotter functions (can't be ran from threaded functions)'''
+    ###################################################################
+    @Slot()
+    def plot_slices(self):
+        self.reset_viewer()
+        # display each layer
+        for i in range(self.Mesh.layers):
+            self.slice_mesh = pv.PolyData(*self.Mesh.get_slice_layer(i))
+            self.plotter.add_mesh(self.slice_mesh.elevation(), color=np.random.rand(3,), show_edges=True)
 
     @Slot()
     def plot_paths_normals(self):
@@ -289,70 +361,10 @@ class MyMainWindow(MainWindow):
                     # plot paths and normals in opposite colors
                     self.plotter.add_mesh(spline.arrows, color=1-color, line_width=5)
                     self.plotter.add_mesh(spline, smooth_shading=True, color=color, line_width=5)
-
         self.progressBar.reset()
-    
-    def export_paths(self):
-        fout, _ = QtWidgets.QFileDialog.getSaveFileName(self, 'Save File', filter="CSV (*.csv)")
-        if fout != "":
-            self.Paths.csv_export(fout)
-            self.update_status('Paths exported as: ' + fout)
-
-    def csv_load(self):
-        fin, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Path Data", filter="CSV (*.csv)")
-        if fin != "":
-            self.paths, self.normals = csv_import(fin)
-            self.plot_paths_normals()
-            self.update_status('Loaded paths from: ' + fin)
-
-#FIXME: find a better file to place function
-def csv_import(fin):
-    from multicell import MultiCell
-    paths = []
-    normals = []
-    with open(fin, 'r') as csvfile:
-        reader = csv.reader(csvfile)
-
-        p = []
-        n = []
-        path_cell = MultiCell()
-        norm_cell = MultiCell()
-        path_count = group = layer = 0
-        for idx, row in enumerate(reader):
-            # ignore header row
-            if idx != 0:
-                # check for layer change
-                if layer != int(float(row[0])):
-                    # store previous layer cell
-                    paths.append(path_cell)
-                    normals.append(norm_cell)
-                    # reset cells to empty
-                    path_cell = MultiCell()
-                    norm_cell = MultiCell()
-                layer = int(float(row[0]))
-                
-                # check for group change
-                if group != int(float(row[1])):
-                    path_count = 0
-                group = int(float(row[1]))
-
-                # store point and normal
-                p.append(list(float(i) for i in row[4:7]))
-                n.append(list(float(i) for i in row[7:]))
-
-                # check if its last point in path
-                if int(float(row[2])) == 1:
-                    # store path
-                    path_cell.set(np.array(p), group, path_count)
-                    norm_cell.set(np.array(n), group, path_count)
-                    # reset points/norms
-                    p = []
-                    n = []
-                    path_count += 1
-    return paths, normals
 
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
     qdarktheme.setup_theme("dark")
-    window = MyMainWindow()
+    window = VRepairWindow()
     sys.exit(app.exec_())

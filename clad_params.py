@@ -1,4 +1,14 @@
-'''Essentially a struct for the cladding parameters'''
+CLADDING_DEFAULTS = {
+    "Clad Height"           : 1,        # (mm) 
+    "Clad Width"            : 10,       # (mm) 
+    "Max Clad Step"         : 5,        # (mm)  (clads overlap is considered)
+    "Clad Orientation"      : 0,        # degrees
+    "Clad Cross Hatching"   : 0,        # enable or disable
+    "Layer Offset"          : 0,        # (0-1)
+    "Max Laser Defocus"     : 3
+}
+
+'''Struct for the cladding parameters'''
 class CladParams():
     def __init__(self, clad_height, clad_width, max_clad_step, clad_orientation,
                     clad_cross_hatching, layer_offset, max_laser_defocus):

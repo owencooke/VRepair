@@ -1,11 +1,50 @@
+# This module contains most of the 3D transformation logic necessary for the repair program.
 import numpy as np
-from enum import Enum
 from skspatial.objects import Plane
 
-class CartNorms(Enum):
-    TOP = [0,0,1]
-    BOTTOM = [0,0,-1]
+''' 
+Unwrapped Cylindrical Coordinate conversion functions, see:
+https://link.springer.com/article/10.1007/s00170-022-09933-3/figures/4
+'''
+def cart_to_unwrapped(xyz):
+    x = xyz[:,0]
+    y = xyz[:,1]
 
+    # Calculate r and theta arrays
+    theta = np.arctan2(y, x)
+    r = np.sqrt(x**2 + y**2)
+
+    # Return unwrapped cylindrical coordinates: (r*theta, z, r)
+    return np.column_stack((r*theta, xyz[:,2], r))
+
+def unwrapped_to_cart(coords):
+    r = coords[:,2]
+    theta = coords[:,0] / r
+
+    # Calculate x and y arrays
+    x = r * np.cos(theta)
+    y = r * np.sin(theta)
+
+    # return cartesian coords
+    return np.column_stack((x,y,coords[:,1]))
+
+# Returns 4x4 matrix representing a rotation about the z-axis
+def rotation_around_z(angle):
+    cos = np.cos(angle)
+    sin = np.sin(angle)
+    # Apply rotation
+    rot = np.array((
+                (cos,	-sin,	0,  0),
+                (sin,   cos,    0,  0),
+                (0, 0,  1,  0),
+                (0,	0,	0,	1)
+            ), dtype=np.float64)
+    return rot
+
+'''
+Represents the 3D cartesian bounding box of a set of points.
+Allows you to return different faces of the bounding box as Plane objects.
+'''
 class BoundingBox():
     def __init__(self, points):
         if type(points) is np.ndarray:
@@ -78,11 +117,9 @@ class BoundingBox():
 
     def get_plane(self, face):
         if face == "bottom":
-            # return Plane(point=list(self.min), normal=CartNorms.BOTTOM)
             return Plane(point=list(self.min), normal=[0,0,-1])
 
         elif face == "top":
-            # return Plane(point=list(self.max), normal=CartNorms.TOP)
             return Plane(point=list(self.max), normal=[0,0,1])
 
     def plane_center(self, face):

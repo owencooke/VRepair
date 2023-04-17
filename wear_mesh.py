@@ -1,41 +1,48 @@
 from math import ceil, floor
-from scipy.spatial import Delaunay
+from scipy.spatial import Delaunay # import pyvista as pv
 import open3d as o3d
 import numpy as np
-import pyvista as pv
-from qtpy.QtCore import Signal, QObject
+from qtpy.QtCore import QObject, Signal
 
-from plane import BoundingBox
-from rigid3d import RigidTransform
+from transforms import BoundingBox
 
-class Emitter(QObject):
-    # setting up custom signal
-    progress = Signal(int, int)
+'''
+WearMesh class takes in 3D points from a pointcloud of a damaged 
+cylindrical surface. It then triangulates the points into a mesh in cylindrical
+coordinates, and slices the mesh into layers to be filled using the laser cladding.
 
-class WearMesh():
+Usage: instantiate using the points from PC and cladding params. Then call
+        `generate_slices` to obtain the layered mesh. 
+'''
+class WearMesh(QObject):
+    progress = Signal(float)
+
     def __init__(self, points, clad_params):
+        super().__init__()
         points = np.asarray(points)
         self.Center = np.mean(points, axis=0)
-        self.Transformation = RigidTransform(trans=-self.Center)
         self.Clad_Params = clad_params
 
         # Create raw mesh from points using Delaunay method
         self.Delaunay = Delaunay(points[:,:2])
-
-        # # #FIXME: might be possible to eliminate the need for SciPy's Delaunay
-        # cloud = pv.PolyData(points)
-        # surf = cloud.reconstruct_surface()
-        # faces = surf.faces.reshape((-1, 4))[:,1:]
-        # points = np.asarray(surf.points, dtype=np.float32)
-        # self.raw_mesh = o3d.t.geometry.TriangleMesh(o3d.core.Tensor(points),
-        #                     o3d.core.Tensor(np.int64(faces)))
-
+        self.num_triangles = len(self.Delaunay.simplices)
         self.raw_vertices = points
         self.raw_BoundingBox = BoundingBox(points)
         self.raw_mesh = o3d.t.geometry.TriangleMesh(o3d.core.Tensor(points),
                             o3d.core.Tensor(np.int64(self.Delaunay.simplices)))
 
-        self.emitter = Emitter()
+        # NOTE: might be possible to eliminate the need for SciPy libary
+        # this code uses two already required libraries (open3D and Pyvista)
+        # to generate similar results to SciPy's Delaunay. Code below 
+        # would replace code in the above block. 
+
+        # cloud = pv.PolyData(points)
+        # surf = cloud.reconstruct_surface()
+        # faces = surf.faces.reshape((-1, 4))[:,1:]
+        # self.num_triangles = len(faces)
+        # points = np.asarray(surf.points, dtype=np.float32)
+        # self.raw_mesh = o3d.t.geometry.TriangleMesh(o3d.core.Tensor(points),
+        #                     o3d.core.Tensor(np.int64(faces)))
 
     def format_triangles_pv(self, triangles):
         threes = np.full(len(triangles),3)
@@ -145,10 +152,6 @@ class WearMesh():
             # extracturing upper mesh above top plane
             upper = mesh.clip_plane(point=list(top.point), normal=[0,0,1]) 
 
-            # FIXME: is triangulation of new mesh faces ensured by o3d?    
-            # tFb = triangulateFaces(Fb)    
-            # tFa = triangulateFaces(Fa) 
-
             # Convert lower mesh's vertices and triangles to numpy
             lower_verts = lower.vertex.positions.numpy()
             lower_tri = lower.triangle.indices.numpy()
@@ -166,12 +169,12 @@ class WearMesh():
 
             # merge projected mesh and remaining mesh from slicer (upper mesh)
             # into new mesh above the plane of first layer
-            # NOTE: can only combine legacy o3d Triangle meshes, not o3d.t
+            # NOTE: can only combine legacy o3d Triangle meshes, not o3d.t (tensors)
             mesh = proj_mesh + upper.to_legacy()
             mesh = o3d.t.geometry.TriangleMesh.from_legacy(mesh)
 
-            # update progress bar
-            self.emitter.progress.emit(layer+1, nlayers-1)
+            # send signal to GUI to update progress bar
+            self.progress.emit((layer+1)/(nlayers-1))
 
         slice_vertices.append(mesh.vertex.positions.numpy())
         slice_faces.append(mesh.triangle.indices.numpy())

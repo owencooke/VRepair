@@ -4,23 +4,25 @@ from math import radians, ceil, floor
 from skspatial.objects import Plane, Line
 from qtpy.QtCore import Signal, QObject
 
-from rigid3d import rotation_around_z
-from plane import BoundingBox
-from multicell import MultiCell
-from interparc import interpcurve
-# from coord_systems import convert_coords
+from transforms import rotation_around_z, BoundingBox
+from utils import MultiCell, interpcurve
 
-class Emitter(QObject):
-    # setting up custom signal
-    progress = Signal(int, int)
+'''
+WearPath class takes in a sliced 3D mesh. It then performs the path planning
+for the laser cladding repair process. The output is the paths, along with their
+depths and normals, to be used to direct the robotic repair process. 
 
-class WearPath():
+Usage: instantiate using the sliced mesh and clad params. Then call:
+        `generate_clippers()` and `generate_paths_and_normals`. The results
+        can be accessed using the results function.
+'''
+class WearPath(QObject):
+    progress = Signal(float)
+
     def __init__(self, meshes_obj, clad_params):
+        super().__init__()
         self.Meshes = meshes_obj
-        self.Transformation = meshes_obj.Transformation
         self.Clad_Params = clad_params
-
-        self.emitter = Emitter()
 
     def generate_clippers(self):
         # init vars
@@ -37,14 +39,14 @@ class WearPath():
         # precomputing for speed
         if clad_cross_hatching == 0:
             layer_rot_matrix = rotation_around_z(-clad_ori)
-            rot_mesh = mesh.transform(layer_rot_matrix.mat)
+            rot_mesh = mesh.transform(layer_rot_matrix)
         else:
             # main orientation 
             layer_rot_matrix1 = rotation_around_z(-clad_ori)
-            rot_mesh1 = mesh.transform(layer_rot_matrix1.mat)
+            rot_mesh1 = mesh.transform(layer_rot_matrix1)
             # perpendicular orientation
             layer_rot_matrix2 = rotation_around_z(-(clad_ori+delta))
-            rot_mesh2 = mesh.transform(layer_rot_matrix2.mat)
+            rot_mesh2 = mesh.transform(layer_rot_matrix2)
         
         # begin clipper generation
         clippers = []
@@ -84,7 +86,7 @@ class WearPath():
                 point = start_point1 + vector * cal_clad_step * i
     
                 # apply inverse transform to point and normal
-                transform = layer_rot_matrix.inverse()
+                transform = np.linalg.inv(layer_rot_matrix)
                 point = np.append(point, 1)
                 point = transform.dot(point)[:3]
                 vector = np.append(vector, 0)
@@ -216,8 +218,8 @@ class WearPath():
             normals.append(normal)
             depths.append(layer_depth)
 
-            # update progress bar
-            self.emitter.progress.emit(layer+1, self.Clad_Params.LAYERS)
+            # send signal to GUI to update progress bar
+            self.progress.emit((layer+1)/self.Clad_Params.LAYERS)
 
         # update object
         self.Paths = paths
@@ -266,8 +268,7 @@ class WearPath():
             path = path[~np.isnan(path).any(axis=1)]
 
             # Remove duplicate points
-            tol = 1.49011611938477e-08 #eps(1e8)
-            # tol = np.finfo(np.float32).eps
+            tol = 1.49011611938477e-08
             rel_tol = tol*np.max(np.abs(path))
             path = self.remove_duplicate_points(path, rel_tol)
 
@@ -301,7 +302,7 @@ class WearPath():
                 if length >= threshold:
                     # removing mid points (connection points)
                     x = np.append(grouped_path[g][0:len(grouped_path[g])-1:2], [grouped_path[g][-1]], axis=0)
-                    layer_paths.set(x, cr, cr2)
+                    layer_paths[cr, cr2] = x
                     cr2 += 1
                     flag = True
             
@@ -314,16 +315,14 @@ class WearPath():
         normals = MultiCell()
         for nPaths in range(len(layer_paths)):
             for q in range(layer_paths.len_subset(nPaths)):
-                lp = layer_paths.get(nPaths,q)
-
                 # Calculate normal vectors
-                d = self.diff(lp)
+                d = self.diff(layer_paths[nPaths, q])
                 norm = np.linalg.norm(d, axis=-1, keepdims=True)
                 cross = np.cross(d/norm, self.Clippers[layer][0].normal)
 
                 # make sure they are pointing upwards in the build direction
                 np.abs(cross[:,2], out=cross[:,2])
-                normals.set(cross, nPaths, q)
+                normals[nPaths, q] = cross
 
         return normals
         
@@ -334,8 +333,8 @@ class WearPath():
         for i in range(len(layer_paths)):  # loop over paths for one layer
             for q in range(layer_paths.len_subset(i)):
                 # one path and its normals on one layer
-                one_path = layer_paths.get(i,q)
-                one_path_normals = normal.get(i,q)
+                one_path = layer_paths[i,q]
+                one_path_normals = normal[i,q]
 
                 d = self.diff(one_path)
                 pathLength = self.path_length(d)
@@ -344,33 +343,32 @@ class WearPath():
                 nPoints = int(np.fix(pathLength / self.Clad_Params.MAX_LASER_DEFOCUS))
                 if nPoints == 1:
                     # if only one point, take first and end points
-                    layer_paths.set(one_path[[0,-1]], i, q)
-                    normal.set(one_path_normals[[0,-1]], i, q)
+                    layer_paths[i,q] = one_path[[0,-1]]
+                    normal[i,q] = one_path_normals[[0,-1]]
                 else:
                     p, N_indes = interpcurve(nPoints,one_path)
-                    layer_paths.set(p, i, q)
-                    normal.set(one_path_normals[N_indes], i, q)
+                    layer_paths[i,q] = p
+                    normal[i,q] = one_path_normals[N_indes]
             
                 # computing depth of points
-                point = layer_paths.get(i,q)
+                point = layer_paths[i,q]
                 jsize = len(point)
                 path_depths = np.zeros((jsize,1))
                 for j in range(jsize):
                     path_depths[j] = top_plane.distance_point_signed(point[j])
         
-                layer_depth.set(path_depths, i, q)
+                layer_depth[i,q] = path_depths
 
         return layer_paths, normal, layer_depth
 
-    # Export path variables to specified sys/coords
-    def export(self):
-        # NOTE: can use unused fcns below for converting exported coord types
+    def results(self):
         return self.Paths, self.Depths, self.Normals
 
     # export paths to CSV
     def csv_export(self, outfile):
-        # get path values according to system/coord type
-        paths, depths, normals = self.export()
+        # NOTE: may want to convert these variables' coordinates, 
+        # depending on desired coord output for the robotic cell
+        paths, depths, normals = self.results()
 
         # Create CSV output file
         header = ['layer_number', 'group', 'point_code','point_depth', 'X','Y','Z','Nx','Ny','Nz']
@@ -381,10 +379,10 @@ class WearPath():
             for layer in range(len(paths)):
                 for g in range(len(paths[layer])):
                     for p in range(paths[layer].len_subset(g)):
-                        points = paths[layer].get(g,p)
+                        points = paths[layer][g,p]
                         # depth is the distance from point to top plane of bounding box.
-                        depth = depths[layer].get(g,p)
-                        normal = normals[layer].get(g,p)
+                        depth = depths[layer][g,p]
+                        normal = normals[layer][g,p]
                         # path should not be less than two points
                         if points.shape[0] >= 2:
                             # Format info and write to CSV row
@@ -402,44 +400,3 @@ class WearPath():
                                 writer.writerow(list(row))
 
         print('Paths are exported as:', outfile)
-
-
-#########################################################################
-'''UNUSED, BUT USEFUL METHODS FOR CONVERTING EXPORTED COODINATES'''
-    # def transform(self, to_system):
-    #     if self.System != to_system and self.System in ['global', 'local']:
-    #         paths = self.Paths
-    #         for l in range(len(paths)):
-    #             for g in range(len(paths[l])):
-    #                 for p in range(paths[l].len_subset(g)):
-    #                     # Apply transform to path points
-    #                     points = paths[l].get(g,p)
-    #                     tf_points = self.Transformation.applyToPoints(points)
-    #                     paths[l].set(tf_points, g, p)
-
-    #         # update points and center
-    #         self.System = to_system
-    #         self.Transformation.flip()
-    #         self.Paths = paths
-    #     else:
-    #         print("System is already in", to_system)
-
-    # def convert(self, to_coord):
-    #     # to_coord: 'none', 'cart', 'cyl', 'sphe'
-    #     # convert from current system to the targeted system
-    #     paths = self.Paths
-    #     for l in range(len(paths)):
-    #         for g in range(len(paths[l])):
-    #             for p in range(paths[l].len_subset(g)):
-    #                     # Apply transform to path points
-    #                     points = paths[l].get(g,p)
-    #                     points = convert_coords(points, self.Coordinate, to_coord) 
-    #                     paths[l].set(points, g, p)
-        
-    #     # Convert translation coords
-    #     trans = self.Transformation.getTranslation()
-    #     self.Transformation.setTranslation(convert_coords(trans, self.Coordinate, to_coord))
-
-    #     # update center and coordinate
-    #     self.Coordinate = to_coord
-    #     self.Paths = paths

@@ -12,40 +12,39 @@ from qtpy import QtWidgets
 from qtpy.QtCore import QThreadPool, QRunnable, Signal, Slot, QObject
 import qdarktheme
 
-from clad_params import CladParams, CLADDING_DEFAULTS
+from utils import CladParams, CLADDING_DEFAULTS, MultiCell
 from wear_mesh import WearMesh
 from wear_path import WearPath
-from coord_systems import cyl_to_cart
+from transforms import cart_to_unwrapped
 
 ''' 
-Thread runs functions in a separate Python thread than the one
+The Thread class runs functions in a separate Python thread than the one
 running the main GUI, so that the GUI does not freeze. MyEmitter enables
-a signal to be emitted upon thread finish, so that you can connect functions.
+a signal to be emitted upon thread finish, so that you can run a function once
+the thread finishes.
 
 To use: 
     1. my_thread = Thread(func_to_run)
     2. (optional) my_thread.emitter.finished.connect(func_to_run_after)
     3. Pass my_thread to `start` method of a QThreadpool instance
 '''
-class MyEmitter(QObject):
-    # setting up custom signal
-    finished = Signal()
-
 class Thread(QRunnable):
     def __init__(self, function, *args, **kwargs):
         super(Thread, self).__init__()
         self.function = function
         self.args = args
         self.kwargs = kwargs
-        self.emitter = MyEmitter()
+        self.emitter = FinishedEmitter()
 
     def run(self):
         self.function(*self.args, **self.kwargs)
         self.emitter.finished.emit()
 
-'''
-Main QtPy Widget Application Window
-'''
+class FinishedEmitter(QObject):
+    finished = Signal()
+
+
+''' VRepairWindow: the main QtPy Widget Application Window '''
 class VRepairWindow(MainWindow):
     def __init__(self, parent=None):
         QtWidgets.QMainWindow.__init__(self, parent)
@@ -107,11 +106,11 @@ class VRepairWindow(MainWindow):
         menu.addAction(load)
 
         loadCSV = QtWidgets.QAction('Load Paths From CSV', self)
-        loadCSV.triggered.connect(self.csv_load)
+        loadCSV.triggered.connect(self.load_paths_csv)
         menu.addAction(loadCSV)
 
         export = QtWidgets.QAction('Export Paths to CSV', self)
-        export.triggered.connect(self.export_paths)
+        export.triggered.connect(self.export_paths_csv)
         menu.addAction(export)
 
         quit = QtWidgets.QAction('Quit', self)
@@ -181,7 +180,7 @@ class VRepairWindow(MainWindow):
         return group
     
     ###################################################################
-    '''Backend helper methods'''
+    '''Helper methods'''
     ###################################################################
 
     # Toggles visibility of a button group
@@ -202,9 +201,9 @@ class VRepairWindow(MainWindow):
         self.statusBar().showMessage(str)
 
     # Changes progress bar percentage
-    @Slot(int, int)
-    def update_progress(self, layer, total):
-        self.progressBar.setValue(100 * layer/total)
+    @Slot(float)
+    def update_progress(self, percent):
+        self.progressBar.setValue(percent * 100)
 
     # creates CladParams struct from input values
     def get_clad_params(self):
@@ -230,14 +229,14 @@ class VRepairWindow(MainWindow):
             cloud = o3d.io.read_point_cloud(fin)
             points = np.asarray(cloud.points)
 
-            # plot PC in main cylindrical viewer
+            # plot PC in MAIN UNWRAPPED CYL viewer
             self.reset_viewer()
-            self.cloud = pv.PolyData(points)
+            self.cloud = pv.PolyData(cart_to_unwrapped(points))
             self.plotter.add_points(self.cloud.elevation(), cmap="jet")
 
-            # plot PC in cartesian mini viewer
+            # plot PC in MINI CARTESIAN viewer
             self.cart_plotter.clear()
-            cloud = pv.PolyData(cyl_to_cart(points))
+            cloud = pv.PolyData(points)
             self.cart_plotter.add_points(cloud.elevation(), cmap="jet")
 
             self.update_status('Loaded point cloud from: ' + fin)
@@ -249,13 +248,13 @@ class VRepairWindow(MainWindow):
         self.Mesh = WearMesh(self.cloud.points, self.get_clad_params())
         self.raw_mesh = pv.PolyData(*self.Mesh.get_raw())
         self.plotter.add_mesh(self.raw_mesh.elevation(), cmap="jet", show_edges=True)
-        self.update_status('Generated mesh with ' + str(len(self.Mesh.Delaunay.simplices)) + ' triangles.')
+        self.update_status('Generated mesh with ' + str(self.Mesh.num_triangles) + ' triangles.')
         self.sliceButton.setEnabled(True)
 
     # NOTE: threaded, can't update plotter from here
     def load_slices(self):
         self.update_status('Slicing mesh...')
-        self.Mesh.emitter.progress.connect(self.update_progress)
+        self.Mesh.progress.connect(self.update_progress)
         self.Mesh.generate_slices()
         self.update_status(str(self.Mesh.layers) + ' layers generated.')
         self.pathsButton.setEnabled(True)
@@ -263,24 +262,26 @@ class VRepairWindow(MainWindow):
     # NOTE: threaded, can't update plotter from here
     def generate_paths(self):
         self.Paths = WearPath(self.Mesh, self.Mesh.Clad_Params)
-        self.Paths.emitter.progress.connect(self.update_progress)
+        self.Paths.progress.connect(self.update_progress)
         self.update_status('Generating clippers...')
         self.Paths.generate_clippers()
         self.update_status('Generating paths...')
         self.Paths.generate_paths_and_normals()
-        self.paths, _, self.normals = self.Paths.export()
+        self.paths, _, self.normals = self.Paths.results()
         self.update_status('Path planning complete.')
 
-    def export_paths(self):
+    def export_paths_csv(self):
         fout, _ = QtWidgets.QFileDialog.getSaveFileName(self, 'Save File', filter="CSV (*.csv)")
         if fout != "":
             self.Paths.csv_export(fout)
             self.update_status('Paths exported as: ' + fout)
 
-    def csv_load(self):
+    def load_paths_csv(self):
+        self.meshButton.setEnabled(False)
+        self.sliceButton.setEnabled(False)
+        self.pathsButton.setEnabled(False)
         fin, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Path Data", filter="CSV (*.csv)")
         if fin != "":
-            from multicell import MultiCell
             paths = []
             normals = []
             with open(fin, 'r') as csvfile:
@@ -315,8 +316,8 @@ class VRepairWindow(MainWindow):
                         # check if its last point in path
                         if int(float(row[2])) == 1:
                             # store path
-                            path_cell.set(np.array(p), group, path_count)
-                            norm_cell.set(np.array(n), group, path_count)
+                            path_cell[group, path_count] = np.array(p)
+                            norm_cell[group, path_count] = np.array(n)
                             # reset points/norms
                             p = []
                             n = []
@@ -324,7 +325,7 @@ class VRepairWindow(MainWindow):
             self.paths = paths
             self.normals = normals
             self.plot_paths_normals()
-            self.update_status('Loaded paths from: ' + fin)
+            self.update_status('Viewing paths from: ' + fin)
     
     ###################################################################
     '''3D plotter functions (can't be ran from threaded functions)'''
@@ -345,7 +346,7 @@ class VRepairWindow(MainWindow):
             color = np.random.rand(3,)
             for j in range(len(self.paths[i])):
                 for q in range(self.paths[i].len_subset(j)):
-                    points = self.paths[i].get(j,q)
+                    points = self.paths[i][j,q]
 
                     # Create spline to represent path
                     spline = pv.PolyData(points)
@@ -355,7 +356,7 @@ class VRepairWindow(MainWindow):
 
                     # Assign normal vectors to spline
                     scale = 1/3
-                    spline["vectors"] = self.normals[i].get(j,q) * scale
+                    spline["vectors"] = self.normals[i][j,q] * scale
                     spline.set_active_vectors("vectors")
 
                     # plot paths and normals in opposite colors

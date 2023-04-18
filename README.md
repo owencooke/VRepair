@@ -19,8 +19,8 @@ A desktop application for automated repair path planning of cylindrical metal co
 1. Run CoppeliaSim and open the simulation scene file `robot_cell_sim.ttt`.
   > **Note**
   > Don't start the simulation from CoppeliaSim, it will be started automatically from the VRepair app. 
-  > If you modify the workpiece in the simulation, make sure you change the parameters defined in the "start_sim" method of the `main.py` file.
-2. Open the VRepair application by running the `main.py` file. 
+  > If you modify the workpiece in the simulation, make sure you change the parameters defined in the "start_sim" method of the `app.py` file.
+2. Open the VRepair application by running the `app.py` file. 
 3. Run the simulation through VRepair by going to File menu and clicking "Run CoppeliaSim".
 4. Make sure you speed up the simulation to its maximum speed by repeatedly pressing the "bunny" button in the top right corner of the CoppeliaSim window.
 5. Now, relax and enjoy the show. :smile:
@@ -38,7 +38,7 @@ https://user-images.githubusercontent.com/80288863/230035877-b6f8966f-5711-459a-
 ## Run Repair Path Planning on Test Point Clouds
 Since the simulated point cloud result is buggy, you can test the repair path planning process using the point clouds provided in the `test_clouds` directory. I would recommend `FBH.pcd`, it is the one I used for the majority of my testing.
 
-1. Open the VRepair application by running the `main.py` file. 
+1. Open the VRepair application by running the `app.py` file. 
 2. Load desired test (File > Load PointCloud)
 3. Perform each "Path Planning" step (Triangulate Mesh > Slice Mesh > Generate Toolpaths)
 4. The resulting toolpaths can then be exported into CSV format (File > Export Paths to CSV)

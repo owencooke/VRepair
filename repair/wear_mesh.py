@@ -4,7 +4,7 @@ import open3d as o3d
 import numpy as np
 from qtpy.QtCore import QObject, Signal
 
-from transforms import BoundingBox
+from repair.transforms import BoundingBox
 
 '''
 WearMesh class takes in 3D points from a pointcloud of a damaged 
@@ -56,14 +56,9 @@ class WearMesh(QObject):
         triangles = self.reconstructed_faces[idx]
         return points, self.format_triangles_pv(triangles)
 
+    #CALC_LAYER_STEP Calculate the layer step distance, and how many layer will fit in
     def calc_layer_step(self, edge, clad_height):
-        #CALC_LAYER_STEP Calculate the layer step distance, and how many layer will fit in
-        # edge. `edge` should be of type `edges3d` in the geom3d library.
-        # edge: in forms of [X Y Z dX dY dZ] 
-        # clad_height: build up distance
-
         length = edge[2]
-
         remainder = (length/clad_height) % 1
 
         # if the layer thickess of the last layer is greater than 0.5 then,
@@ -98,7 +93,6 @@ class WearMesh(QObject):
         cal_layer_step, nlayers, offset = self.calc_layer_step(edge, self.Clad_Params.CLAD_HEIGHT)
     
         # mesh slicers initialization
-        # Get bottom of bounding box
         bottom = self.raw_BoundingBox.get_face_coords("bottom")
         # Second plane is the first, but translated upwards by the layer step
         plane2 = np.ndarray.copy(bottom)
@@ -132,11 +126,10 @@ class WearMesh(QObject):
         self.Clad_Params.LAYERS = nlayers 
         self.layers = nlayers
 
+    #SLICEMESH returns the slices of a mesh, sliced using plane of a box.
+    # this function followes the bottom-up rebuild approach. It uses the top
+    # plane of each layer box to slice the mesh.
     def slice_mesh(self, boxes, nlayers):
-        #SLICEMESH returns the slices of a mesh, sliced using plane of a box.
-        # this function followes the bottom-up rebuild approach. It uses the top
-        # plane of each layer box to slice the mesh.
-
         slice_vertices = []
         slice_faces = []
         mesh = self.raw_mesh

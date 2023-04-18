@@ -12,10 +12,14 @@ from qtpy import QtWidgets
 from qtpy.QtCore import QThreadPool, QRunnable, Signal, Slot, QObject
 import qdarktheme
 
-from utils import CladParams, CLADDING_DEFAULTS, MultiCell
-from wear_mesh import WearMesh
-from wear_path import WearPath
-from transforms import cart_to_unwrapped
+# Imports for robotic cell detection/localization
+from detect import cell
+
+# Imports for repair path planning
+from repair.utils import CladParams, CLADDING_DEFAULTS, MultiCell
+from repair.wear_mesh import WearMesh
+from repair.wear_path import WearPath
+from repair.transforms import cart_to_unwrapped
 
 ''' 
 The Thread class runs functions in a separate Python thread than the one
@@ -100,6 +104,10 @@ class VRepairWindow(MainWindow):
 
     def createFileMenu(self):
         menu = self.menuBar().addMenu('File')
+
+        sim = QtWidgets.QAction('Run CoppeliaSim', self)
+        sim.triggered.connect(lambda: self.thread(self.start_sim, self.load_sim))
+        menu.addAction(sim)
         
         load = QtWidgets.QAction('Load PointCloud', self)
         load.triggered.connect(self.load_cloud)
@@ -211,7 +219,6 @@ class VRepairWindow(MainWindow):
         params = list(widget.value() for widget in fields)
         return CladParams(*params)
 
-    #FIXME: move me
     def reset_viewer(self):
         self.plotter.reset_camera()
         self.plotter.set_scale(zscale=10)
@@ -220,6 +227,72 @@ class VRepairWindow(MainWindow):
     ###################################################################
     '''Backend functions (connected to buttons)'''
     ###################################################################
+
+    ''' FIXME @ Wilson: connect to Robotic Cell here and start the 
+    damage detection and localization '''
+    def start_sim(self):
+        # FIXME: workpiece information, must match the part in sim or in actual cell.
+        # add support for this as user input
+        workpiece_dia = 0.095       # extreme diameter in meters
+        workpiece_len = 0.450       # len in meters
+        scanning_pitch = 0.005      # 5 mm, distance in z btw two scanning traces
+        show_plots_flag = False     # show optimal stitching plots
+
+        # initiate virtual cell:
+        self.vc = cell.vcell(workpiece_dia, workpiece_len, show_plots_flag)
+        
+        # prepare cell and load workpiece
+        self.update_status("Preparing part inspection...")
+        self.update_progress(5/100)
+        self.vc.prepare_part()
+        
+        # image scan paths generation
+        self.update_status("Inspecting part...")
+        self.update_progress(30/100)
+        self.vc.scan_part()
+        
+        # single image generation
+        self.update_status("Mapping surface...")
+        self.update_progress(45/100)
+        self.vc.map_surface_forward()
+        
+        # recognize defects
+        self.update_status("Analyzing defects...")
+        self.update_progress(55/100)
+        self.vc.detect_defects()
+        
+        # mapping segementation shapes to spitial space
+        self.update_status("Localizing detected defects...")
+        self.update_progress(70/100)
+        self.vc.map_surface_backward()
+        
+        # pcd scan paths
+        self.update_status("Scanning defects...")
+        self.update_progress(85/100)
+        self.vc.scan_defects(scanning_pitch)
+        
+        self.update_progress(100/100)
+        self.update_status('Scanning completed.')
+            
+    ''' FIXME @ Wilson: display damaged point cloud from robotic
+    cell detection here, instead of from sim '''
+    def load_sim(self):
+        points = np.asarray(self.vc.pcds[0][0])
+
+        # plot PC in main cylindrical viewer
+        self.reset_viewer()
+        self.cloud = pv.PolyData(cart_to_unwrapped(points))
+        self.plotter.add_points(self.cloud.elevation(), cmap="jet")
+
+        # plot PC in cartesian mini viewer
+        self.cart_plotter.clear()
+        cloud = pv.PolyData(points)
+        self.cart_plotter.add_points(cloud.elevation(), cmap="jet")
+
+        self.update_status('Loaded point cloud from simulation.')
+        self.meshButton.setEnabled(True)
+
+    # Loads point cloud of damage from local file instead of from cell
     def load_cloud(self):
         self.sliceButton.setEnabled(False)
         self.pathsButton.setEnabled(False)

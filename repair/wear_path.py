@@ -4,8 +4,8 @@ from math import radians, ceil, floor
 from skspatial.objects import Plane, Line
 from qtpy.QtCore import Signal, QObject
 
-from transforms import rotation_around_z, BoundingBox
-from utils import MultiCell, interpcurve
+from repair.transforms import rotation_around_z, BoundingBox
+from repair.utils import MultiCell, interpcurve
 
 '''
 WearPath class takes in a sliced 3D mesh. It then performs the path planning
@@ -101,12 +101,8 @@ class WearPath(QObject):
         self.Clad_Params.CAL_CALDS_OVERLAP = cal_clads_overlap
         self.Clippers = clippers
 
-
+    # CALC_CLAD_STEP Calculate the clad step distance, and how many passes will fit in
     def calc_clad_step(self, edge, max_clad_step, clad_width):
-        # CALC_CLAD_STEP Calculate the clad step distance, and how many passes will fit in
-        # max_clad_step: max distance between two centers of clads
-        # boundary_offset: distance to the outer margin of the boundary passes.
-
         boundary_offset = clad_width
         length = np.linalg.norm(edge) - boundary_offset
         remainder = (length/max_clad_step) % 1
@@ -126,8 +122,8 @@ class WearPath(QObject):
 
         nClads = nClads + 1  # add on one pass to include first pass
 
-        #calculate coverage and output how to much offset to center passes if
-        #coverage isnt 1.
+        # calculate coverage and output how to much offset to
+        # center passes if coverage isnt 1.
         coverage = cal_clad_step * nClads
         if coverage/length < 1  :            # some uncovered
             offset = boundary_offset + (length-coverage)/2
@@ -149,16 +145,8 @@ class WearPath(QObject):
     def ismembertol(self, a, b, tol):
         return np.all(np.abs(a-b) <= tol, axis=1)
 
+    # returns intersection points of sliced face by plane.
     def slice_face(self, face, vof, plane):
-        # returns the edge of sliced face by plane.
-        # Input:
-        # face: face vertices in X-Y-Z position
-        # vof: vertices location (above, below, on plane)
-        # plane: slicing plane
-
-        # Output:
-        # pInt: points of intersection (point, edges, nan).
-
         # ensure last point is the same as the first one for polygon purpose
         if not np.array_equal(face[0], face[-1]):
             face = np.append(face, [face[0]], axis=0)
@@ -178,7 +166,6 @@ class WearPath(QObject):
 
     # return numpy array of the differences between subsequent points
     def diff(self, points):
-        # Return vectorized subtraction, ignoring first index
         return (points - np.roll(points,1, axis=0))[1:]
 
     def path_length(self, points):
@@ -364,7 +351,6 @@ class WearPath(QObject):
     def results(self):
         return self.Paths, self.Depths, self.Normals
 
-    # export paths to CSV
     def csv_export(self, outfile):
         # NOTE: may want to convert these variables' coordinates, 
         # depending on desired coord output for the robotic cell

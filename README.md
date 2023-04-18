@@ -1,5 +1,5 @@
 # VRepair
-A desktop application for automated repair path planning of cylindrical metal components in a robotic cell. Supports the following procedure:
+A desktop application written in Python for automated repair path planning of cylindrical metal components in a robotic cell. Supports the following procedure:
 1. Defect detection using computer vision technologies/deep learning models.
 2. Localization of the defects using a laser time-of-flight sensor, generating 3D point clouds of the damaged surface of a part
 3. Path planning for the surface repair of the defects using a robot-assisted laser cladding process
@@ -7,6 +7,15 @@ A desktop application for automated repair path planning of cylindrical metal co
 ### Source Literature
 - Detection/Localization: [Vision-based spatial damage localization method for autonomous robotic laser cladding repair processes](https://www.sciencedirect.com/science/article/pii/S073658452200134X)
 - Repair Path Planning: [A path planning method for surface damage repair using a robot-assisted laser cladding process](https://link.springer.com/article/10.1007/s00170-022-09933-3)
+
+### Key GUI Libraries
+- [PySide6](https://wiki.qt.io/Qt_for_Python): the open-source Python-wrapper for building Qt apps. You will want to learn about the QtWidget framework, since that is what this application is built on (how to create QWidgets, add them to the window, create buttons/link them to functions, etc.)
+- [QtPy](https://github.com/spyder-ide/qtpy): Instead of using PySide6 directly, I used QtPy, which basically just allows you to switch between Qt versions more easily. If you are looking for docs like QtPy.QWidget, it's equivalent to the docs for whatever Qt version we are using (PySide6, in this case)
+- [PyVista](https://docs.pyvista.org/version/stable/index.html): 3D plotting and mesh analysis through a streamlined interface for the Visualization Toolkit (VTK), used to plot the 3D models seen in the GUI.
+
+### Key Backend Libraries
+- NumPy (for manipulating the 3D point cloud coordinates)
+- [Open3D](http://www.open3d.org/docs/release/) (for loading point cloud files, performing mesh operations, etc.)
 
 ### Future Work
 - Fix issue with simulated point cloud result (only storing one curve of points, not multiple). Occuring somewhere in detect module. Simulated point cloud result should look similar to the tests provided in `test_clouds`

@@ -22,6 +22,7 @@ A desktop application written in Python for automated repair path planning of cy
 - Replace simulation with actual robotic cell integration (getting data from cell's camera/scanner, and then outputting paths to the cell for laser-cladding)
   > **Note** 
   > Last bullet is very big picture. Getting access to an actual robotic cell or making one in the lab will be difficult. Up to Dr. Rafiq.
+- Bundle as a commercial application (might have to fix some absolute path calls in the code for this to be bundled)
 
 ## Installation
 1. Install CoppeliaSim (Player or Edu) from [here](https://www.coppeliarobotics.com/downloads.html)

@@ -1,11 +1,11 @@
+import os
 import sys
-sys.path.append('C:/Users/owenc/Documents/SMART LAB/defectron/zmqRemoteApi/clients/python')
+sys.path.append(os.path.abspath("./detect/zmqRemoteApi/clients/python"))
 
 import math
 import numpy as np
 import cv2
 import time
-import os   
 from detect import robot
 from detect import sensor
 from detect.robot import move2target, move2config

@@ -26,14 +26,17 @@ A desktop application written in Python for automated repair path planning of cy
 
 ## Installation
 1. Install CoppeliaSim (Player or Edu) from [here](https://www.coppeliarobotics.com/downloads.html)
-2. Create a Python virtual environment and install all the required dependencies:
-  ```batch
+2. Clone the repo, create a Python virtual environment and install all the required dependencies:
+  ```bash
+  git clone git@github.com:owencooke/VRepair.git
+  cd VRepair
   python -m venv .venv
   .venv/Scripts/Activate
   pip install -r requirements.txt
   ```
   > **Note**
-  > if using VSCode, you should be able to just open the `requirements.txt` file and there will be a "Create Environment" button that will do this for you.
+  > if using VSCode, you should be able to just open the `requirements.txt` file and there will be a "Create Environment" button that will automatically do it for you.
+3. Replace the empty `detect/yolov7_model` folder with the Yolo V7 model downloaded from [here](https://drive.google.com/file/d/1CgfYtPn5pjLpaiEPHAd3aWUaFBpKEa_o/view?usp=sharing).
 
 ## Run Method #1: Simulation of Damage Detection/Localization
 1. Run CoppeliaSim and open the simulation scene file `robot_cell_sim.ttt`.

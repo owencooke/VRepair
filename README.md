@@ -51,7 +51,7 @@ A desktop application written in Python for automated repair path planning of cy
   > The detected point cloud is successfully passed to the VRepair app, however you will notice that the detected cloud itself is not correct.
   > The graduate student who developed the detection/localization believes there might be a bug in the scanning part of the program. It seems to me as if its only outputting one of the scanned lines of 3D points, not all of them. Load `test_clouds/FBH.pcd` into VRepair for an example of how the simulated scan **should** look.
 
-### What CoppeliaSim Should Look Like
+### CoppeliaSim Demos
 - Inspecting the workpiece for damage:
 
 https://user-images.githubusercontent.com/80288863/230035814-6055d11a-7aa9-4f53-ae6f-a64136830531.mp4
@@ -69,3 +69,8 @@ Since the simulated point cloud result is buggy, you can test the repair path pl
 4. The resulting toolpaths can then be exported into CSV format (File > Export Paths to CSV)
 
 The resulting toolpath information can then be used to direct the robotic cell to perform the laser-cladding repair process. Supposedly the paths can be loaded into robot simulation software such as RoboDK, although I never had the chance to try this part. 
+
+### Repair Demo
+The point cloud loaded here is what the simulated point cloud **should** look like
+
+https://user-images.githubusercontent.com/90405643/233168941-8c0ec87f-bc0b-4bc2-9372-51b0996423e4.mp4

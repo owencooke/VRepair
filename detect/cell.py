@@ -564,9 +564,8 @@ class vcell:
         pcd_scans = []
         approach = True
         for plan in self.defect_plans:
-            
+            cyl_pcd = []
             for path in plan[0]:
-                cyl_pcd = []
                 scan_trigger = path[1]
                 
                 if approach:
@@ -1006,7 +1005,6 @@ class vcell:
                 
                 # change reference frame of detected point to the user frame (positioner leader frame)
                 uf2tofMat = self.sim.getObjectMatrix(self.tof.id, self.uframe_id)
-                self.sim.invertMatrix(uf2tofMat)
                 pointUF = self.sim.multiplyVector(uf2tofMat, tof_point)
                 pcds.append(pointUF)   # x, y, z with user frame
             

@@ -2,21 +2,30 @@
 import numpy as np
 
 CLADDING_DEFAULTS = {
-    "Clad Height"           : 1,        # (mm) 
-    "Clad Width"            : 10,       # (mm) 
-    "Max Clad Step"         : 5,        # (mm)  (clads overlap is considered)
-    "Clad Orientation"      : 0,        # degrees
-    "Clad Cross Hatching"   : 0,        # enable or disable
-    "Layer Offset"          : 0,        # (0-1)
-    "Max Laser Defocus"     : 3
+    "Clad Height (mm)"                : 1,
+    "Clad Width (mm)"                : 10,
+    "Max Clad Step (mm)"             : 5, 
+    "Clad Orientation (°)"           : 0,
+    "Layer Offset Ratio"            : 0,
+    "Max Laser Defocus (mm)"         : 3,
+    "Clad Cross Hatching"           : False
 }
 
 '''
 Class interface for the cladding parameters.
+
+% CLADDING PROCESS PARAMETERS DEFINITIONS
+% CLAD_HEIGHT: max height of a clad. (mm)
+% CLAD_WIDTH: max width of a clad.   (mm)
+% MAX_CLAD_STEP: max distance between two clads centers, or hatching space. (mm)
+% CLAD_ORIENTATION: angle of laser cladding direction. (deg)
+% CLAD_CROSS_HATCHING: layers cross hatching swithch. (ON, OFF)
+% LAYER_OFFSET: shift between two consecutive clad layers. (0-1) (ratio)
+% MAX_LASER_DEFOCUS: maximum allowable laser defocus height. (mm)
 '''
 class CladParams():
     def __init__(self, clad_height, clad_width, max_clad_step, clad_orientation,
-                    clad_cross_hatching, layer_offset, max_laser_defocus):
+                    layer_offset, max_laser_defocus, clad_cross_hatching):
 
         self.CLAD_HEIGHT = clad_height 
         self.CLAD_WIDTH = clad_width 
@@ -25,7 +34,7 @@ class CladParams():
         self.LAYERS = 0
 
         #  check if vars are as expected
-        if clad_orientation>= 0 and clad_orientation <= 180 and ( clad_cross_hatching == 0 or clad_cross_hatching ==1 ):
+        if clad_orientation>= 0 and clad_orientation <= 180:
             self.CLAD_ORIENTATION = clad_orientation 
             self.CLAD_CROSS_HATCHING= clad_cross_hatching
         else:

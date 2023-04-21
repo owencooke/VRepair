@@ -14,12 +14,12 @@ def cart_to_unwrapped(xyz):
     theta = np.arctan2(y, x)
     r = np.sqrt(x**2 + y**2)
 
-    # Return unwrapped cylindrical coordinates: (r*theta, z, r)
-    return np.column_stack((r*theta, xyz[:,2], r))
+    # Return unwrapped cylindrical coordinates: (r_mean*theta, z, r)
+    return np.column_stack((np.mean(r)*theta, xyz[:,2], r))
 
 def unwrapped_to_cart(coords):
     r = coords[:,2]
-    theta = coords[:,0] / r
+    theta = coords[:,0] / np.mean(r)
 
     # Calculate x and y arrays
     x = r * np.cos(theta)

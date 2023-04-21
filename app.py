@@ -152,9 +152,13 @@ class VRepairWindow(MainWindow):
         # create cladding buttons
         layout = QtWidgets.QFormLayout()
         for name, value in CLADDING_DEFAULTS.items():
-            field = QtWidgets.QDoubleSpinBox()
-            field.setValue(value)
-            layout.addRow(name, field)
+            if type(value) == bool:
+                check = QtWidgets.QCheckBox()
+                layout.addRow(name, check)
+            else:
+                field = QtWidgets.QDoubleSpinBox()
+                field.setValue(value)
+                layout.addRow(name, field)
     
         group = QtWidgets.QGroupBox("Cladding Parameters")
         group.setCheckable(True)
@@ -203,6 +207,8 @@ class VRepairWindow(MainWindow):
         thread = Thread(start)
         thread.emitter.finished.connect(after)
         self.threadpool.start(thread)
+        # start()
+        # after()
     
     # Displays message in status bar
     def update_status(self, str):
@@ -216,8 +222,10 @@ class VRepairWindow(MainWindow):
     # creates CladParams struct from input values
     def get_clad_params(self):
         fields = self.cladButtons.findChildren(QtWidgets.QDoubleSpinBox)
-        params = list(widget.value() for widget in fields)
-        return CladParams(*params)
+        field_params = list(widget.value() for widget in fields)
+        boxes = self.cladButtons.findChildren(QtWidgets.QCheckBox)
+        box_params = list(widget.isChecked() for widget in boxes)
+        return CladParams(*field_params, *box_params)
 
     def reset_viewer(self):
         self.plotter.reset_camera()
@@ -277,7 +285,8 @@ class VRepairWindow(MainWindow):
     ''' FIXME @ Wilson: display damaged point cloud from robotic
     cell detection here, instead of from sim '''
     def load_sim(self):
-        points = np.asarray(self.vc.pcds[0][0])
+        points = np.array(self.vc.pcds[0]).reshape(-1,3)
+        np.save('sim_points.npy', points)
 
         # plot PC in main cylindrical viewer
         self.reset_viewer()

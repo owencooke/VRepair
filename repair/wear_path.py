@@ -37,7 +37,7 @@ class WearPath(QObject):
         delta = np.pi/2 * clad_cross_hatching
         
         # precomputing for speed
-        if clad_cross_hatching == 0:
+        if not clad_cross_hatching:
             layer_rot_matrix = rotation_around_z(-clad_ori)
             rot_mesh = mesh.transform(layer_rot_matrix)
         else:

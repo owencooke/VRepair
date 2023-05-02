@@ -207,6 +207,7 @@ class VRepairWindow(MainWindow):
         thread = Thread(start)
         thread.emitter.finished.connect(after)
         self.threadpool.start(thread)
+        # COMMENT ABOVE AND UNCOMMENT BELOW TO DEBUG THREADED FCNS
         # start()
         # after()
     
@@ -286,7 +287,7 @@ class VRepairWindow(MainWindow):
     cell detection here, instead of from sim '''
     def load_sim(self):
         points = np.array(self.vc.pcds[0]).reshape(-1,3)
-        np.save('sim_points.npy', points)
+        np.save('output/sim_points.npy', points)
 
         # plot PC in main cylindrical viewer
         self.reset_viewer()

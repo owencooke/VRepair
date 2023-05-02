@@ -18,14 +18,14 @@ A desktop application written in Python for automated repair path planning of cy
 - [Open3D](http://www.open3d.org/docs/release/) (for loading point cloud files, performing mesh operations, etc.)
 
 ### Future Work
-- Fix issue with simulated point cloud result (only storing one curve of points, not multiple). Occuring somewhere in detect module. Simulated point cloud result should look similar to the tests provided in `test_clouds`
+- Create a realistic simulation workpiece that allows you to demo the whole damage detection, localization, and repair process in one go.
 - Replace simulation with actual robotic cell integration (getting data from cell's camera/scanner, and then outputting paths to the cell for laser-cladding)
   > **Note** 
   > Last bullet is very big picture. Getting access to an actual robotic cell or making one in the lab will be difficult. Up to Dr. Rafiq.
 - Bundle as a commercial application (might have to fix some absolute path calls in the code for this to be bundled)
 
 ## Installation
-1. Install CoppeliaSim (Player or Edu) from [here](https://www.coppeliarobotics.com/downloads.html)
+1. Install CoppeliaSim Edu from [here](https://www.coppeliarobotics.com/downloads.html)
 2. Clone the repo, create a Python virtual environment and install all the required dependencies:
   ```bash
   git clone git@github.com:owencooke/VRepair.git
@@ -39,17 +39,17 @@ A desktop application written in Python for automated repair path planning of cy
 3. Replace the empty `detect/yolov7_model` folder with the Yolo V7 model downloaded from [here](https://drive.google.com/file/d/1CgfYtPn5pjLpaiEPHAd3aWUaFBpKEa_o/view?usp=sharing).
 
 ## Run Method #1: Simulation of Damage Detection/Localization
-1. Run CoppeliaSim and open the simulation scene file `robot_cell_sim.ttt`.
+1. Run CoppeliaSim and open the simulation scene file `simulations/blender_v2.ttt`.
 2. Open the VRepair application by running the `app.py` file. 
-3. Run the simulation through VRepair by going to File menu and clicking "Run CoppeliaSim".
+3. Run the simulation through VRepair by going to "File > Run CoppeliaSim".
   > **Note**
-  > If you modify the workpiece in the simulation, make sure you change the parameters defined in the "start_sim" method of `app.py`.
+  > If you modify the SIZE of the workpiece in the simulation, make sure you change the parameters defined in the "start_sim" method of `app.py`.
   > More realistic tests (damaged workpieces) can supposedly be created in Blender using a "displacement map", although I never tried this.
 5. Set the simulation to its maximum speed by repeatedly pressing the "bunny" button in the top right corner of the CoppeliaSim window.
 6. Now, relax and enjoy the show. :smile:
   > **Warning**
-  > The detected point cloud is successfully passed to the VRepair app, however you will notice that the detected cloud itself is not correct.
-  > The graduate student who developed the detection/localization believes there might be a bug in the scanning part of the program. It seems to me as if its only outputting one of the scanned lines of 3D points, not all of them. Load `test_clouds/FBH.pcd` into VRepair for an example of how the simulated scan **should** look.
+  > The detected point cloud is successfully passed to the VRepair app, however you will notice that the detected cloud itself is not as similar to the tests provided in `test_clouds`. 
+  > I attempted to create a more realistic simulation workpiece using Blender by using Boolean operations to cut small pieces of the cylinder surface out. You can see that they provided much beter results than the `simulations/original.ttt` file that Hamdan provided me, but there is still improvement to be made towards the realistic surface wear.
 
 ### CoppeliaSim Demos
 - Inspecting the workpiece for damage:
@@ -59,6 +59,16 @@ https://user-images.githubusercontent.com/80288863/230035814-6055d11a-7aa9-4f53-
 - 3D Scanning of the defective region:
 
 https://user-images.githubusercontent.com/80288863/230035877-b6f8966f-5711-459a-897d-78e4d7ab81e4.mp4
+
+### How to Modify the Simulations With Different Test Workpieces
+1. Create a cylinder mesh with the simulated dmaage using a 3D modelling program. I tried using Blender by following this [tutorial](https://youtu.be/kfUmcRwQRps) (only the Boolean operation cut-out part, not textures). Export it to .STL file.
+2. Create a copy of one of the scene files in `simulations` directory.
+3. To import your .STL, go to "File > Import > Mesh" and click "Import" when the dialog box pops up.
+4. Open the "Scene Hierarchy" where it lists all the elements. Find the element called "positioner_tcp". Within it, there should be an element called "workpiece" (which is the old test subject).
+5. Activate the "Object Move" tool, select the old "workpiece" element and write down its position in the scene relative to parent.
+6. Delete the old "workpiece", rename your new test element "workpiece", and move it into the hierarchy where the old "workpiece" was. Apply the coordinates you wrote down to move the test piece to where the old test was.
+7. Double click on the model icon next to your workpiece, it should open a scene properties dialog. Click "Texture > Select texture from existing textures" and there should be a "tiledConcrete" texture you can add to give your model some texture for the image detection.
+8. Done! Should be able to run the new test simulation exactly as before. 
 
 ## Run Method #2: Repair Path Planning on Test Point Clouds
 Since the simulated point cloud result is buggy, you can test the repair path planning process using the point clouds provided in the `test_clouds` directory. I would recommend `FBH.pcd`, it is the one I used for the majority of my testing.

@@ -84,3 +84,10 @@ The resulting toolpath information can then be used to direct the robotic cell t
 The point cloud loaded here is what the simulated point cloud **should** look like
 
 https://user-images.githubusercontent.com/90405643/233168941-8c0ec87f-bc0b-4bc2-9372-51b0996423e4.mp4
+
+### After Exporting the Repair Toolpaths
+I never got to test or work with this step, but below I will share the information that Hamdan shared with me:
+1. Download RoboDK, another robot simulation software.
+2. Open the `simulations/repair_workcell.rdk`. It is only the first version of the RDK cell and is still missing the laser head. You can search for a CAD file of any laser head and attach it to the robot.
+3. We use the inbuilt functionality for the "path following project" to allow the robot cell to follow the generated toolpaths and complete the repair process.
+

@@ -5,6 +5,7 @@ A desktop application written in Python for automated repair path planning of cy
 3. Path planning for the surface repair of the defects using a robot-assisted laser cladding process
 
 ### Source Literature
+The majority of the work contributed to this project was done as part of Hamdan Al-Musaibeli's masters' thesis. He originally designed the robotic simulation and Python program used here. He also created the repair path planning program in MATLAB, which Owen converted to Python for integration with the first contribution and designed a GUI for. Hamdan's papers explaining this project are provided below:
 - Detection/Localization: [Vision-based spatial damage localization method for autonomous robotic laser cladding repair processes](https://www.sciencedirect.com/science/article/pii/S073658452200134X)
 - Repair Path Planning: [A path planning method for surface damage repair using a robot-assisted laser cladding process](https://link.springer.com/article/10.1007/s00170-022-09933-3)
 
@@ -17,7 +18,7 @@ A desktop application written in Python for automated repair path planning of cy
 - NumPy (for manipulating the 3D point cloud coordinates)
 - [Open3D](http://www.open3d.org/docs/release/) (for loading point cloud files, performing mesh operations, etc.)
 
-### Future Work
+### Future Work (IMO)
 - Create a realistic simulation workpiece that allows you to demo the whole damage detection, localization, and repair process in one go.
 - Replace simulation with actual robotic cell integration (getting data from cell's camera/scanner, and then outputting paths to the cell for laser-cladding)
   > **Note** 
